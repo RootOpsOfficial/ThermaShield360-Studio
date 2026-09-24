@@ -1,0 +1,271 @@
+import { WeatherCurrent, WeatherHourly, WeatherDailyForecast, DataSourceLabel } from './types.js';
+import { calculateWBGT, calculateUTCI, calculateHeatIndex, categorizeThermalStress } from './thermalEngine.js';
+
+interface CachedWeatherData {
+  timestamp: number;
+  current: WeatherCurrent;
+  hourly: WeatherHourly[];
+  daily: WeatherDailyForecast[];
+}
+
+const cache: Map<string, CachedWeatherData> = new Map();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+
+// Map WMO weather codes to human text
+function decodeWeatherCode(code: number): string {
+  if (code === 0) return 'Clear Sunny Sky';
+  if (code === 1 || code === 2) return 'Mostly Sunny & Clear';
+  if (code === 3) return 'Partly Cloudy';
+  if (code === 45 || code === 48) return 'Hazy Sunshine';
+  if (code >= 51 && code <= 67) return 'Light Scattered Showers';
+  if (code >= 80 && code <= 82) return 'Rain Showers';
+  if (code >= 95) return 'Thunderstorm Warning';
+  return 'Clear Warm Sky';
+}
+
+// Generate realistic meteorological fallback for Pune based on current hour
+function getFallbackModelledWeather(lat: number, lng: number): {
+  current: WeatherCurrent;
+  hourly: WeatherHourly[];
+  daily: WeatherDailyForecast[];
+} {
+  const now = new Date();
+  const currentHour = now.getHours();
+
+  // Pune diurnal temperature profile: min at 05:00 (~24°C), peak at 14:00 (~38.5°C)
+  const hourAngle = ((currentHour - 14) / 24) * 2 * Math.PI;
+  const tempCycle = Math.cos(hourAngle); // 1 at 14:00, -1 at 02:00
+  const baseTemp = 31.5;
+  const tempAmplitude = 7.5;
+  const currentTemp = Math.round((baseTemp + tempAmplitude * tempCycle) * 10) / 10;
+
+  // Relative humidity is inverse to temp: lowest at peak heat (32%), highest at dawn (68%)
+  const rh = Math.round(50 - 20 * tempCycle);
+
+  // Solar irradiance peak at 12:30 (up to 880 W/m²)
+  let solar = 0;
+  if (currentHour >= 6 && currentHour <= 18) {
+    const solarFraction = Math.sin(((currentHour - 6) / 12) * Math.PI);
+    solar = Math.round(Math.max(0, solarFraction * 890));
+  }
+
+  const wind = Math.round((2.5 + 1.8 * Math.sin((currentHour / 24) * 2 * Math.PI)) * 10) / 10;
+  const heatIndex = calculateHeatIndex(currentTemp, rh);
+  const feelsLike = heatIndex;
+
+  const current: WeatherCurrent = {
+    temp: currentTemp,
+    feelsLike,
+    humidity: rh,
+    windSpeed: Math.round(wind * 3.6 * 10) / 10, // km/h
+    windDirection: 260,
+    solarIrradiance: solar,
+    uvIndex: currentHour >= 10 && currentHour <= 15 ? 10 : currentHour >= 7 && currentHour <= 17 ? 5 : 0,
+    pressure: 1012,
+    weatherCode: 0,
+    weatherDescription: 'Intense Sunshine & Dry Heat',
+    source: 'MODELLED',
+    lastUpdated: now.toISOString(),
+  };
+
+  const hourly: WeatherHourly[] = [];
+  for (let h = 0; h < 24; h++) {
+    const angle = ((h - 14) / 24) * 2 * Math.PI;
+    const cosVal = Math.cos(angle);
+    const t = Math.round((baseTemp + tempAmplitude * cosVal) * 10) / 10;
+    const r = Math.round(50 - 20 * cosVal);
+    let s = 0;
+    if (h >= 6 && h <= 18) {
+      s = Math.round(Math.max(0, Math.sin(((h - 6) / 12) * Math.PI) * 890));
+    }
+    const w = 2.8;
+    const wb = calculateWBGT(t, r, s, w);
+    const ut = calculateUTCI(t, r, w, s);
+    const hi = calculateHeatIndex(t, r);
+    const rk = categorizeThermalStress(wb, ut);
+
+    const periodStr = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+    hourly.push({
+      time: periodStr,
+      hour: h,
+      temp: t,
+      feelsLike: hi,
+      humidity: r,
+      windSpeed: Math.round(w * 3.6 * 10) / 10,
+      solarRadiation: s,
+      wbgt: wb,
+      utci: ut,
+      heatIndex: hi,
+      riskLevel: rk,
+    });
+  }
+
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const daily: WeatherDailyForecast[] = [];
+  const maxTemps = [38.6, 39.4, 40.2, 39.8, 38.0];
+  const minTemps = [24.5, 25.1, 25.8, 25.2, 24.3];
+
+  for (let d = 0; d < 5; d++) {
+    const fDate = new Date();
+    fDate.setDate(now.getDate() + d);
+    const dayName = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : daysOfWeek[fDate.getDay()];
+    const tMax = maxTemps[d];
+    const tMin = minTemps[d];
+    const avgRh = 42;
+    const peakSol = 910;
+    const wb = calculateWBGT(tMax, avgRh, peakSol, 2.5);
+    const ut = calculateUTCI(tMax, avgRh, 2.5, peakSol);
+    const risk = categorizeThermalStress(wb, ut);
+    const isHeatwave = tMax >= 40.0 ? 'Severe Heatwave' : tMax >= 38.5 ? 'Heatwave' : 'None';
+
+    daily.push({
+      date: fDate.toISOString().split('T')[0],
+      dayName,
+      tempMax: tMax,
+      tempMin: tMin,
+      feelsLikeMax: Math.round(tMax + 3.8),
+      humidityAvg: avgRh,
+      solarRadiationMax: peakSol,
+      riskLevel: risk,
+      heatwaveStatus: isHeatwave,
+      peakPeriod: '12:30 PM – 4:30 PM',
+      summary: isHeatwave !== 'None' ? 'Severe heat alert. Peak thermal stress afternoon.' : 'High daytime heat.',
+    });
+  }
+
+  return { current, hourly, daily };
+}
+
+export async function fetchWeatherData(
+  lat: number = 18.5204,
+  lng: number = 73.8567
+): Promise<{
+  current: WeatherCurrent;
+  hourly: WeatherHourly[];
+  daily: WeatherDailyForecast[];
+  source: DataSourceLabel;
+}> {
+  const cacheKey = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const cached = cache.get(cacheKey);
+
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return {
+      current: cached.current,
+      hourly: cached.hourly,
+      daily: cached.daily,
+      source: cached.current.source,
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout for fast response
+
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,direct_normal_irradiance&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m,uv_index,direct_normal_irradiance&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,uv_index_max,precipitation_probability_max&timezone=auto`;
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error(`Open-Meteo returned status ${res.status}`);
+    }
+
+    const data = await res.json();
+    const c = data.current;
+    const h = data.hourly;
+    const d = data.daily;
+
+    const currentTemp = c.temperature_2m;
+    const rh = c.relative_humidity_2m;
+    const windKmH = c.wind_speed_10m;
+    const windMs = windKmH / 3.6;
+    const solar = c.direct_normal_irradiance || 0;
+    const feelsLike = c.apparent_temperature || calculateHeatIndex(currentTemp, rh);
+
+    const current: WeatherCurrent = {
+      temp: Math.round(currentTemp * 10) / 10,
+      feelsLike: Math.round(feelsLike * 10) / 10,
+      humidity: Math.round(rh),
+      windSpeed: Math.round(windKmH * 10) / 10,
+      windDirection: c.wind_direction_10m || 0,
+      solarIrradiance: Math.round(solar),
+      uvIndex: h.uv_index ? h.uv_index[new Date().getHours()] || 7 : 7,
+      pressure: Math.round(c.surface_pressure || 1013),
+      weatherCode: c.weather_code || 0,
+      weatherDescription: decodeWeatherCode(c.weather_code || 0),
+      source: 'LIVE',
+      lastUpdated: new Date().toISOString(),
+    };
+
+    const hourly: WeatherHourly[] = [];
+    const totalHourlyCount = Math.min(24, (h.time || []).length);
+    for (let i = 0; i < totalHourlyCount; i++) {
+      const timeIso = h.time[i];
+      const hourNum = new Date(timeIso).getHours();
+      const t = h.temperature_2m[i];
+      const r = h.relative_humidity_2m[i];
+      const wSpeed = h.wind_speed_10m[i];
+      const sRad = h.direct_normal_irradiance ? h.direct_normal_irradiance[i] || 0 : 0;
+      const wb = calculateWBGT(t, r, sRad, wSpeed / 3.6);
+      const ut = calculateUTCI(t, r, wSpeed / 3.6, sRad);
+      const hi = h.apparent_temperature ? h.apparent_temperature[i] : calculateHeatIndex(t, r);
+      const rk = categorizeThermalStress(wb, ut);
+
+      const periodStr = hourNum === 0 ? '12 AM' : hourNum < 12 ? `${hourNum} AM` : hourNum === 12 ? '12 PM' : `${hourNum - 12} PM`;
+
+      hourly.push({
+        time: periodStr,
+        hour: hourNum,
+        temp: Math.round(t * 10) / 10,
+        feelsLike: Math.round(hi * 10) / 10,
+        humidity: Math.round(r),
+        windSpeed: Math.round(wSpeed * 10) / 10,
+        solarRadiation: Math.round(sRad),
+        wbgt: wb,
+        utci: ut,
+        heatIndex: Math.round(hi * 10) / 10,
+        riskLevel: rk,
+      });
+    }
+
+    const daily: WeatherDailyForecast[] = [];
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const totalDailyCount = Math.min(5, (d.time || []).length);
+
+    for (let j = 0; j < totalDailyCount; j++) {
+      const dateStr = d.time[j];
+      const dayDate = new Date(dateStr);
+      const dayName = j === 0 ? 'Today' : j === 1 ? 'Tomorrow' : daysOfWeek[dayDate.getDay()];
+      const tMax = d.temperature_2m_max[j];
+      const tMin = d.temperature_2m_min[j];
+      const feelsMax = d.apparent_temperature_max[j] || tMax + 3;
+      const solarEst = 850;
+      const wb = calculateWBGT(tMax, 40, solarEst, 2.5);
+      const ut = calculateUTCI(tMax, 40, 2.5, solarEst);
+      const rk = categorizeThermalStress(wb, ut);
+      const isHeatwave = tMax >= 40.0 ? 'Severe Heatwave' : tMax >= 38.5 ? 'Heatwave' : 'None';
+
+      daily.push({
+        date: dateStr,
+        dayName,
+        tempMax: Math.round(tMax * 10) / 10,
+        tempMin: Math.round(tMin * 10) / 10,
+        feelsLikeMax: Math.round(feelsMax * 10) / 10,
+        humidityAvg: 42,
+        solarRadiationMax: solarEst,
+        riskLevel: rk,
+        heatwaveStatus: isHeatwave,
+        peakPeriod: '12:30 PM – 4:30 PM',
+        summary: isHeatwave !== 'None' ? 'Extreme thermal stress forecasted. Avoid peak outdoor hours.' : 'Warm day with moderate thermal load.',
+      });
+    }
+
+    const result = { current, hourly, daily, source: 'LIVE' as DataSourceLabel };
+    cache.set(cacheKey, { timestamp: Date.now(), ...result });
+    return result;
+  } catch (err) {
+    console.warn('Weather live fetch failed or timed out, using calibrated modelled data:', err);
+    const fallback = getFallbackModelledWeather(lat, lng);
+    return { ...fallback, source: 'MODELLED' };
+  }
+}

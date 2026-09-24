@@ -1,0 +1,7 @@
+{
+  "name": "ThermaShield 360",
+  "description": "Production-grade Citizen Climate Safety Workspace: Hyper-local Heat Risk, Thermal Stress (WBGT/UTCI), Heatwave Forecasting, Interactive GIS Risk Maps, Cooling Protection, Safe Routing & Healthcare.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

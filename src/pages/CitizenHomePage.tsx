@@ -839,7 +839,7 @@ export const CitizenHomePage: React.FC = () => {
             onClick={() => setActivePage('future')}
             className="font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
           >
-            <span>Explore Early Warning Heatwave Module</span>
+            <span>Explore Early Warning & Heatwave Forecast</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

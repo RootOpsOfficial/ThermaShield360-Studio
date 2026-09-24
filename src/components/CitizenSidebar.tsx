@@ -4,7 +4,6 @@ import { CitizenPage } from '../types.js';
 import {
   Home,
   Flame,
-  CloudSun,
   ThermometerSun,
   Map,
   CalendarRange,
@@ -30,8 +29,7 @@ export const CitizenSidebar: React.FC = () => {
   const items: SidebarItem[] = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'risk', label: 'My Heat Risk', icon: Flame },
-    { id: 'future', label: 'Early Warning Heatwave', icon: CalendarRange, badge: '96%' },
-    { id: 'heatwave', label: 'Heatwave Forecast', icon: CloudSun },
+    { id: 'future', label: 'Early Warning & Heatwave Forecast', icon: CalendarRange, badge: '96%' },
     { id: 'thermal', label: 'Thermal Stress', icon: ThermometerSun },
     { id: 'map', label: 'Heat Risk Map', icon: Map },
     { id: 'healthcare', label: 'Nearby Healthcare', icon: Cross },

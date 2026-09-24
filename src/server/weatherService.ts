@@ -102,17 +102,18 @@ function getFallbackModelledWeather(lat: number, lng: number): {
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const daily: WeatherDailyForecast[] = [];
-  const maxTemps = [38.6, 39.4, 40.2, 39.8, 38.0];
-  const minTemps = [24.5, 25.1, 25.8, 25.2, 24.3];
+  // 16 days temperature progression reflecting Pune pre/post-monsoon & October Heat surge
+  const maxTemps = [38.6, 39.2, 40.1, 39.6, 38.2, 38.0, 37.8, 38.4, 39.1, 39.7, 40.2, 40.8, 41.2, 40.5, 39.8, 39.0];
+  const minTemps = [24.5, 25.1, 25.8, 25.2, 24.3, 23.9, 24.4, 24.9, 25.5, 26.0, 26.7, 27.3, 26.8, 25.9, 25.2, 24.6];
 
-  for (let d = 0; d < 5; d++) {
+  for (let d = 0; d < 16; d++) {
     const fDate = new Date();
     fDate.setDate(now.getDate() + d);
     const dayName = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : daysOfWeek[fDate.getDay()];
     const tMax = maxTemps[d];
     const tMin = minTemps[d];
-    const avgRh = 42;
-    const peakSol = 910;
+    const avgRh = Math.max(28, 44 - Math.round((tMax - 37) * 2));
+    const peakSol = 880 + (d % 4) * 20;
     const wb = calculateWBGT(tMax, avgRh, peakSol, 2.5);
     const ut = calculateUTCI(tMax, avgRh, 2.5, peakSol);
     const risk = categorizeThermalStress(wb, ut);
@@ -123,13 +124,17 @@ function getFallbackModelledWeather(lat: number, lng: number): {
       dayName,
       tempMax: tMax,
       tempMin: tMin,
-      feelsLikeMax: Math.round(tMax + 3.8),
+      feelsLikeMax: Math.round((tMax + 3.8) * 10) / 10,
       humidityAvg: avgRh,
       solarRadiationMax: peakSol,
       riskLevel: risk,
       heatwaveStatus: isHeatwave,
       peakPeriod: '12:30 PM – 4:30 PM',
-      summary: isHeatwave !== 'None' ? 'Severe heat alert. Peak thermal stress afternoon.' : 'High daytime heat.',
+      summary: isHeatwave === 'Severe Heatwave'
+        ? 'Severe heat alert. Peak thermal stress afternoon.'
+        : isHeatwave === 'Heatwave'
+        ? 'Heatwave advisory active. High daytime heat.'
+        : 'Warm season conditions within seasonal tolerance.',
     });
   }
 
@@ -161,7 +166,7 @@ export async function fetchWeatherData(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout for fast response
 
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,direct_normal_irradiance&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m,uv_index,direct_normal_irradiance&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,uv_index_max,precipitation_probability_max&timezone=auto`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,direct_normal_irradiance&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m,uv_index,direct_normal_irradiance&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,uv_index_max,precipitation_probability_max&forecast_days=16&timezone=auto`;
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -230,7 +235,7 @@ export async function fetchWeatherData(
 
     const daily: WeatherDailyForecast[] = [];
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const totalDailyCount = Math.min(5, (d.time || []).length);
+    const totalDailyCount = Math.min(16, (d.time || []).length);
 
     for (let j = 0; j < totalDailyCount; j++) {
       const dateStr = d.time[j];

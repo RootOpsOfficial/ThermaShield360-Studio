@@ -121,7 +121,7 @@ export const HeatwaveForecastPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 pt-2">
-          {weatherForecast.map((day, idx) => {
+          {weatherForecast.slice(0, 5).map((day, idx) => {
             const isToday = idx === 0;
             const isCritical = day.riskLevel === 'Extreme';
             return (

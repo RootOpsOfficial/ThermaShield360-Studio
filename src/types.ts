@@ -130,7 +130,19 @@ export interface UnifiedHeatwaveVerdict {
 
 export interface EarlyWarningHorizon {
   id: string;
-  timeRangeLabel: '8 to 12 Month' | '5 to 8 Month' | '2 to 5 Month' | '1 to 2 Month' | '1 to 30 Days';
+  timeRangeLabel:
+    | '1 Day to 30 Days'
+    | '1 to 30 Days'
+    | '1 to 3 Months'
+    | '1 to 2 Month'
+    | '3 to 5 Months'
+    | '2 to 5 Month'
+    | '5 to 8 Months'
+    | '5 to 8 Month'
+    | '8 to 12 Months'
+    | '8 to 12 Month'
+    | '8 to 13 Months'
+    | string;
   timeRangeTitle: string;
   targetWindow: string;
   isHeatwaveComing: boolean;
@@ -327,6 +339,51 @@ export interface CitizenHeatRiskResponse {
   dataStatus: DataSourceLabel;
   confidence: string;
   lastUpdated: string;
+}
+
+export interface LocalRiskMapAreaFeature {
+  type: 'Feature';
+  id: string;
+  properties: {
+    area_id: string;
+    area_name: string;
+    zone: string;
+    risk_score: number;
+    risk_level: RiskLevel;
+    current_status: string;
+    last_updated: string;
+    data_status: DataSourceLabel;
+    temperature: number;
+    humidity: number;
+    wind_speed: number;
+    solar_irradiance: number;
+    uhi_offset: number;
+    built_density_pct: number;
+    tree_canopy_pct: number;
+    is_current_area: boolean;
+    center: [number, number];
+  };
+  geometry: {
+    type: 'Polygon';
+    coordinates: number[][][];
+  };
+}
+
+export interface LocalRiskMapResponse {
+  type: 'FeatureCollection';
+  features: LocalRiskMapAreaFeature[];
+  current_location: {
+    lat: number;
+    lon: number;
+    city: string;
+    zone: string;
+    ward: string;
+    risk_score: number;
+    risk_level: RiskLevel;
+    current_status: string;
+    last_updated: string;
+    data_status: DataSourceLabel;
+  };
 }
 
 export interface CitizenAlert {

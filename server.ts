@@ -7,7 +7,7 @@ import { fetchWeatherData } from './src/server/weatherService.js';
 import { generateRoutes } from './src/server/routingEngine.js';
 import { getAdaptiveRecommendations, getCitizenAlerts } from './src/server/intelligenceEngine.js';
 import { generateLongRangeEarlyWarning } from './src/server/longRangeEarlyWarning.js';
-import { RiskLevel, ProtectionSummary, WardInfo, CitizenMyRiskData, CitizenHeatRiskResponse } from './src/server/types.js';
+import { RiskLevel, ProtectionSummary, WardInfo, CitizenMyRiskData, CitizenHeatRiskResponse, LocalRiskMapAreaFeature, LocalRiskMapResponse } from './src/server/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -358,6 +358,183 @@ app.get('/api/citizen/heat-risk', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('Error in /api/citizen/heat-risk:', err);
     res.status(500).json({ error: 'Failed to calculate citizen heat risk' });
+  }
+});
+
+// GET /api/citizen/local-risk-map?lat={lat}&lon={lon}
+// Real interactive, GPS-based heat-risk map with GeoJSON polygons
+app.get('/api/citizen/local-risk-map', async (req: Request, res: Response) => {
+  try {
+    const lat = parseFloat(
+      (req.query.lat as string) || (req.query.latitude as string) || '18.5204'
+    );
+    const lon = parseFloat(
+      (req.query.lon as string) || (req.query.lng as string) || (req.query.longitude as string) || '73.8567'
+    );
+
+    const { ward: currentWard, city, state } = resolveLocationOrWard(req, lat, lon);
+    const weather = await fetchWeatherData(lat, lon);
+    const current = weather.current;
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    const distToPune = calculateDistanceKm(lat, lon, 18.5204, 73.8567);
+
+    // If within 55km of Pune, use authoritative PUNE_WARDS
+    // Otherwise, generate realistic administrative sector polygons surrounding the user's real GPS coordinates
+    let wardsList: WardInfo[] = [];
+
+    if (distToPune <= 55) {
+      wardsList = PUNE_WARDS;
+    } else {
+      // Contiguous municipal sectors around user's GPS
+      const sectorOffsets = [
+        { idSuffix: 'core', name: `${city} Central Urban Core`, zone: 'Central Zone', dLat: 0, dLon: 0, vuln: 68, uhi: 2.2, built: 78, canopy: 18 },
+        { idSuffix: 'north', name: `${city} North Residential Sector`, zone: 'North Zone', dLat: 0.022, dLon: 0.005, vuln: 48, uhi: 1.4, built: 58, canopy: 32 },
+        { idSuffix: 'east', name: `${city} East Commercial Corridor`, zone: 'East Zone', dLat: 0.006, dLon: 0.025, vuln: 74, uhi: 2.8, built: 84, canopy: 12 },
+        { idSuffix: 'south', name: `${city} South Transit & Industrial`, zone: 'South Zone', dLat: -0.021, dLon: 0.012, vuln: 70, uhi: 2.5, built: 80, canopy: 15 },
+        { idSuffix: 'west', name: `${city} West Green Belt & Hillside`, zone: 'West Zone', dLat: -0.008, dLon: -0.024, vuln: 32, uhi: 0.7, built: 42, canopy: 48 },
+        { idSuffix: 'nw', name: `${city} Northwest Campus & Suburban`, zone: 'Northwest Zone', dLat: 0.019, dLon: -0.021, vuln: 40, uhi: 1.1, built: 50, canopy: 38 },
+      ];
+
+      wardsList = sectorOffsets.map((s) => {
+        const cLat = lat + s.dLat;
+        const cLon = lon + s.dLon;
+        const delta = 0.014;
+        return {
+          id: `sector-${s.idSuffix}-${lat.toFixed(3)}-${lon.toFixed(3)}`,
+          name: s.name,
+          zone: s.zone,
+          center: [cLat, cLon],
+          bounds: [
+            [cLat - delta, cLon - delta],
+            [cLat + delta, cLon - delta],
+            [cLat + delta, cLon + delta],
+            [cLat - delta, cLon + delta],
+            [cLat - delta, cLon - delta],
+          ],
+          population: 140000,
+          vulnerableCount: 28000,
+          treeCanopyPct: s.canopy,
+          builtDensityPct: s.built,
+          vulnerabilityIndex: s.vuln,
+          uhiOffsetDegC: s.uhi,
+          highRiskAreas: ['Unshaded Transit Spine', 'Paved Market Square'],
+          lowRiskAreas: ['Canopy Shaded Parks', 'Municipal Green Corridor'],
+        };
+      });
+    }
+
+    const lastUpdated = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    // Identify user's active ward
+    let activeWard = wardsList.find((w) => w.id === currentWard.id);
+    if (!activeWard) {
+      let minDist = Infinity;
+      for (const w of wardsList) {
+        const d = calculateDistanceKm(lat, lon, w.center[0], w.center[1]);
+        if (d < minDist) {
+          minDist = d;
+          activeWard = w;
+        }
+      }
+    }
+    if (!activeWard) activeWard = wardsList[0];
+
+    // Compute GeoJSON Features for each ward/area
+    const features: LocalRiskMapAreaFeature[] = wardsList.map((ward) => {
+      const areaTemp = Math.round((current.temp + (ward.uhiOffsetDegC - 1.5)) * 10) / 10;
+      const areaWbgt = calculateWBGT(areaTemp, current.humidity, current.solarIrradiance, current.windSpeed);
+      const areaUtci = calculateUTCI(areaTemp, current.humidity, current.windSpeed, current.solarIrradiance);
+      const composite = calculateCompositeRiskScore(areaWbgt, areaUtci, ward.vulnerabilityIndex, currentHour, ward.uhiOffsetDegC);
+
+      const isCurrentArea = ward.id === activeWard?.id;
+
+      let status = 'Normal heat conditions';
+      if (composite.level === 'Extreme') {
+        status = 'Avoid unnecessary outdoor exposure';
+      } else if (composite.level === 'High') {
+        status = 'Reduce prolonged outdoor exposure';
+      } else if (composite.level === 'Moderate') {
+        status = 'Take additional care';
+      }
+
+      // GeoJSON standard coordinates order: [longitude, latitude]
+      const ring = ward.bounds.map(([bLat, bLon]) => [bLon, bLat]);
+      if (ring.length > 0 && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) {
+        ring.push([ring[0][0], ring[0][1]]);
+      }
+
+      return {
+        type: 'Feature',
+        id: ward.id,
+        properties: {
+          area_id: ward.id,
+          area_name: ward.name,
+          zone: ward.zone,
+          risk_score: composite.score,
+          risk_level: composite.level,
+          current_status: status,
+          last_updated: lastUpdated,
+          data_status: 'MODELLED',
+          temperature: areaTemp,
+          humidity: current.humidity,
+          wind_speed: current.windSpeed,
+          solar_irradiance: current.solarIrradiance,
+          uhi_offset: ward.uhiOffsetDegC,
+          built_density_pct: ward.builtDensityPct,
+          tree_canopy_pct: ward.treeCanopyPct,
+          is_current_area: isCurrentArea,
+          center: [ward.center[0], ward.center[1]],
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [ring],
+        },
+      };
+    });
+
+    // Current location thermal calculation
+    const currWbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, current.windSpeed);
+    const currUtci = calculateUTCI(current.temp, current.humidity, current.windSpeed, current.solarIrradiance);
+    const currComposite = calculateCompositeRiskScore(
+      currWbgt,
+      currUtci,
+      activeWard.vulnerabilityIndex,
+      currentHour,
+      activeWard.uhiOffsetDegC
+    );
+
+    let currStatus = 'Normal heat conditions';
+    if (currComposite.level === 'Extreme') {
+      currStatus = 'Avoid unnecessary outdoor exposure';
+    } else if (currComposite.level === 'High') {
+      currStatus = 'Reduce prolonged outdoor exposure';
+    } else if (currComposite.level === 'Moderate') {
+      currStatus = 'Take additional care';
+    }
+
+    const payload: LocalRiskMapResponse = {
+      type: 'FeatureCollection',
+      features,
+      current_location: {
+        lat,
+        lon,
+        city,
+        zone: activeWard.zone,
+        ward: activeWard.name,
+        risk_score: currComposite.score,
+        risk_level: currComposite.level,
+        current_status: currStatus,
+        last_updated: lastUpdated,
+        data_status: current.source === 'LIVE' ? 'LIVE' : 'MODELLED',
+      },
+    };
+
+    res.json(payload);
+  } catch (err) {
+    console.error('Error in /api/citizen/local-risk-map:', err);
+    res.status(500).json({ error: 'Failed to generate local risk map' });
   }
 });
 

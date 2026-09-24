@@ -260,6 +260,51 @@ export interface CitizenHeatRiskResponse {
   lastUpdated: string;
 }
 
+export interface LocalRiskMapAreaFeature {
+  type: 'Feature';
+  id: string;
+  properties: {
+    area_id: string;
+    area_name: string;
+    zone: string;
+    risk_score: number;
+    risk_level: RiskLevel;
+    current_status: string;
+    last_updated: string;
+    data_status: DataSourceLabel;
+    temperature: number;
+    humidity: number;
+    wind_speed: number;
+    solar_irradiance: number;
+    uhi_offset: number;
+    built_density_pct: number;
+    tree_canopy_pct: number;
+    is_current_area: boolean;
+    center: [number, number];
+  };
+  geometry: {
+    type: 'Polygon';
+    coordinates: number[][][];
+  };
+}
+
+export interface LocalRiskMapResponse {
+  type: 'FeatureCollection';
+  features: LocalRiskMapAreaFeature[];
+  current_location: {
+    lat: number;
+    lon: number;
+    city: string;
+    zone: string;
+    ward: string;
+    risk_score: number;
+    risk_level: RiskLevel;
+    current_status: string;
+    last_updated: string;
+    data_status: DataSourceLabel;
+  };
+}
+
 export interface CitizenAlert {
   id: string;
   type: 'Heatwave alert' | 'High heat-risk alert' | 'Critical heat alert' | 'Protection warning' | 'Location-specific safety advice';

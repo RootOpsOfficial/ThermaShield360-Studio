@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   X,
   ChevronRight,
+  ChevronDown,
   Calculator,
   AlertTriangle,
   Info,
@@ -21,20 +22,49 @@ import {
   Thermometer,
 } from 'lucide-react';
 
-// Common Pune wards & localities for quick search/selection
-const PUNE_LOCALITIES = [
-  { name: 'Shivajinagar - Ghole Road', zone: 'Central Pune', defaultUhi: '+1.8°C' },
-  { name: 'Kasba Peth - Vishrambaug Wada', zone: 'Heritage Core', defaultUhi: '+3.2°C' },
-  { name: 'Kothrud - Bavdhan', zone: 'West Hills', defaultUhi: '+0.9°C' },
-  { name: 'Aundh - Baner', zone: 'North-West Tech', defaultUhi: '+1.2°C' },
-  { name: 'Hadapsar - Mundhwa', zone: 'East Industrial', defaultUhi: '+2.7°C' },
-  { name: 'Viman Nagar - Nagar Road', zone: 'North-East Airport', defaultUhi: '+2.1°C' },
-  { name: 'Swargate - Parvati', zone: 'South Central', defaultUhi: '+2.4°C' },
-  { name: 'Bibwewadi - Kondhwa', zone: 'South Suburb', defaultUhi: '+2.0°C' },
-  { name: 'Katraj - Dhankawadi', zone: 'South Hills', defaultUhi: '+1.3°C' },
-  { name: 'Kalyani Nagar - Koregaon Park', zone: 'East Riverside', defaultUhi: '+1.5°C' },
-  { name: 'Deccan Gymkhana - FC Road', zone: 'Central West', defaultUhi: '+1.9°C' },
-  { name: 'Wakad - Hinjewadi IT Park', zone: 'West Tech Corridor', defaultUhi: '+1.4°C' },
+// Comprehensive Pune wards & localities base
+const ALL_PUNE_LOCATIONS = [
+  // PMC Administrative Wards
+  { name: 'Ward 14: Shivajinagar - Ghole Road', zone: 'Central Pune', isWard: true, defaultUhi: '+1.8°C' },
+  { name: 'Ward 21: Kasba Peth - Vishrambaug Wada', zone: 'Heritage Core', isWard: true, defaultUhi: '+3.2°C' },
+  { name: 'Ward 9: Kothrud - Bavdhan', zone: 'West Hills', isWard: true, defaultUhi: '+0.9°C' },
+  { name: 'Ward 7: Aundh - Baner', zone: 'North-West Tech', isWard: true, defaultUhi: '+1.2°C' },
+  { name: 'Ward 18: Hadapsar - Mundhwa', zone: 'East Industrial', isWard: true, defaultUhi: '+2.7°C' },
+  { name: 'Ward 12: Viman Nagar - Nagar Road', zone: 'North-East Airport', isWard: true, defaultUhi: '+2.1°C' },
+  { name: 'Ward 25: Swargate - Parvati', zone: 'South Central', isWard: true, defaultUhi: '+2.4°C' },
+
+  // Key Pune Localities & Micro-Districts
+  { name: 'Shivajinagar', zone: 'Central Pune', isWard: false, defaultUhi: '+1.8°C' },
+  { name: 'Kasba Peth', zone: 'Heritage Core', isWard: false, defaultUhi: '+3.2°C' },
+  { name: 'Kothrud', zone: 'West Hills', isWard: false, defaultUhi: '+0.9°C' },
+  { name: 'Aundh', zone: 'North-West Tech', isWard: false, defaultUhi: '+1.2°C' },
+  { name: 'Baner', zone: 'North-West Tech', isWard: false, defaultUhi: '+1.1°C' },
+  { name: 'Balewadi', zone: 'North-West', isWard: false, defaultUhi: '+1.0°C' },
+  { name: 'Hadapsar', zone: 'East Industrial', isWard: false, defaultUhi: '+2.7°C' },
+  { name: 'Mundhwa', zone: 'East Industrial', isWard: false, defaultUhi: '+2.5°C' },
+  { name: 'Viman Nagar', zone: 'North-East Airport', isWard: false, defaultUhi: '+2.1°C' },
+  { name: 'Kalyani Nagar', zone: 'East Riverside', isWard: false, defaultUhi: '+1.5°C' },
+  { name: 'Koregaon Park', zone: 'East Riverside', isWard: false, defaultUhi: '+1.4°C' },
+  { name: 'Swargate', zone: 'South Central', isWard: false, defaultUhi: '+2.4°C' },
+  { name: 'Parvati', zone: 'South Central', isWard: false, defaultUhi: '+2.2°C' },
+  { name: 'Bibwewadi', zone: 'South Suburb', isWard: false, defaultUhi: '+2.0°C' },
+  { name: 'Kondhwa', zone: 'South Suburb', isWard: false, defaultUhi: '+2.1°C' },
+  { name: 'Katraj', zone: 'South Hills', isWard: false, defaultUhi: '+1.3°C' },
+  { name: 'Dhankawadi', zone: 'South Hills', isWard: false, defaultUhi: '+1.4°C' },
+  { name: 'Deccan Gymkhana', zone: 'Central West', isWard: false, defaultUhi: '+1.9°C' },
+  { name: 'FC Road', zone: 'Central West', isWard: false, defaultUhi: '+1.9°C' },
+  { name: 'Bavdhan', zone: 'West Hills', isWard: false, defaultUhi: '+0.8°C' },
+  { name: 'Pashan', zone: 'West Hills', isWard: false, defaultUhi: '+0.9°C' },
+  { name: 'Wakad', zone: 'West Tech Corridor', isWard: false, defaultUhi: '+1.4°C' },
+  { name: 'Hinjewadi IT Park', zone: 'West Tech Corridor', isWard: false, defaultUhi: '+1.3°C' },
+  { name: 'Camp (Pune Cantonment)', zone: 'Central East', isWard: false, defaultUhi: '+1.7°C' },
+  { name: 'Magarpatta City', zone: 'East Industrial', isWard: false, defaultUhi: '+2.3°C' },
+  { name: 'Kharadi IT Park', zone: 'North-East', isWard: false, defaultUhi: '+2.0°C' },
+  { name: 'Yerawada', zone: 'North-East', isWard: false, defaultUhi: '+2.2°C' },
+  { name: 'Khadki', zone: 'North Central', isWard: false, defaultUhi: '+1.6°C' },
+  { name: 'Wanowrie', zone: 'South-East', isWard: false, defaultUhi: '+1.8°C' },
+  { name: 'Bhosari', zone: 'North Industrial', isWard: false, defaultUhi: '+2.4°C' },
+  { name: 'Pimpri-Chinchwad', zone: 'North-West Hub', isWard: false, defaultUhi: '+2.0°C' },
 ];
 
 export const EarlyWarningHeatwavePage: React.FC = () => {
@@ -125,6 +155,34 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
   const isHeatwaveComing = unifiedVerdict.isHeatwaveComing;
   const horizons = report.horizons || [];
 
+  // Sequence order: 1 Day to 30 Days (1), 1 to 3 Months (2), 3 to 5 Months (3), 5 to 8 Months (4), 8 to 12/13 Months (5)
+  const HORIZON_SEQUENCE: Record<string, number> = {
+    'horizon-1-30d': 1,
+    'horizon-1-3m': 2,
+    'horizon-1-2m': 2,
+    'horizon-3-5m': 3,
+    'horizon-2-5m': 3,
+    'horizon-5-8m': 4,
+    'horizon-8-12m': 5,
+    'horizon-8-13m': 5,
+  };
+
+  const getHorizonSortOrder = (h: EarlyWarningHorizon): number => {
+    if (HORIZON_SEQUENCE[h.id]) return HORIZON_SEQUENCE[h.id];
+    const label = h.timeRangeLabel.toLowerCase();
+    if (label.includes('30 day')) return 1;
+    if (label.includes('1 to 3') || label.includes('1 to 2')) return 2;
+    if (label.includes('3 to 5') || label.includes('2 to 5')) return 3;
+    if (label.includes('5 to 8')) return 4;
+    if (label.includes('8 to 12') || label.includes('8 to 13')) return 5;
+    return 99;
+  };
+
+  // All 5 strategic horizons ordered chronologically
+  const orderedHorizons = [...(horizons as EarlyWarningHorizon[])].sort((a, b) => {
+    return getHorizonSortOrder(a) - getHorizonSortOrder(b);
+  });
+
   const handleSelectLocation = (locName: string) => {
     setSelectedLocationName(locName);
     setSearchInput(locName);
@@ -145,137 +203,156 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
     setCustomReport(null);
   };
 
+  const renderHorizonCard = (horizon: EarlyWarningHorizon) => {
+    const isComing = horizon.isHeatwaveComing;
+
+    return (
+      <div
+        key={horizon.id}
+        className={`p-4 sm:p-5 rounded-2xl bg-white border-2 transition-all ${
+          isComing ? 'border-red-300/80 hover:border-red-400' : 'border-emerald-300/80 hover:border-emerald-400'
+        }`}
+      >
+        {/* Sector Header: Label, Verdict, and One Number */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider text-white ${
+                isComing ? 'bg-orange-600' : 'bg-emerald-600'
+              }`}
+            >
+              {horizon.timeRangeLabel}
+            </span>
+            <h3 className="text-sm font-extrabold text-slate-900">
+              {horizon.timeRangeTitle.split('(')[0].trim()}
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {/* Verdict Pill */}
+            <span
+              className={`px-2.5 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 ${
+                isComing ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+              }`}
+            >
+              {isComing ? <Flame className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              <span>{horizon.verdict}</span>
+            </span>
+
+            {/* Single Combined Number */}
+            <div className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-right">
+              <span className="text-xs font-black text-slate-900">
+                {horizon.unifiedConfidencePct}%
+              </span>
+              <span className="text-[9px] text-slate-400 block -mt-0.5">Confidence</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Clean Metrics Grid: Arrival, Duration, Severity (No bulky description text) */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-[10px] font-extrabold text-orange-600 uppercase block">
+              WHEN WILL IT COME?
+            </span>
+            <p className="font-extrabold text-slate-900 mt-0.5">{horizon.expectedOnsetDates}</p>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase block">
+              EXPECTED DURATION
+            </span>
+            <p className="font-extrabold text-slate-900 mt-0.5">{horizon.expectedDuration}</p>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase block">
+              SEVERITY LEVEL
+            </span>
+            <p className="font-extrabold text-slate-900 mt-0.5">{horizon.severityLevel} Threat</p>
+          </div>
+        </div>
+
+        {/* THE TWO BUTTONS PER SECTOR: Resources Button & Important Action/Protection Button */}
+        <div className="mt-3.5 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+          {/* Button 1: Resources & Confidence for this sector */}
+          <button
+            onClick={() => setActiveSectorResources(horizon)}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors"
+          >
+            <Layers className="w-3.5 h-3.5 text-blue-600" />
+            <span>View Resources & Confidence</span>
+          </button>
+
+          {/* Button 2: Important Action & Protection for this sector */}
+          <button
+            onClick={() => setActiveSectorAction(horizon)}
+            className="px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors ml-auto"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
+            <span>Important Action & Protection</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-200">
       {/* 1. Header with Title */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              Early Warning Heatwave
-            </h1>
-            <span className="apple-badge bg-orange-100 text-orange-800 font-bold text-xs">
-              Unified Climatology
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Single definitive consensus forecast predicting heatwave arrival across strategic horizons.
-          </p>
-        </div>
-
-        {/* Status pill showing current location */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-black/5 text-slate-700 text-xs font-semibold">
-          <Globe2 className="w-3.5 h-3.5 text-blue-600" />
-          <span>Active Location: {activeLocation}</span>
-        </div>
+      <div>
+        <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+          Early Warning Heatwave
+        </h1>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Single definitive consensus forecast predicting heatwave arrival across strategic horizons.
+        </p>
       </div>
 
-      {/* 2. LOCATION CHOOSER AT THE TOP */}
-      <section className="apple-card p-4 sm:p-5 border border-slate-200/80 bg-white shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-orange-600" />
-            <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-              Choose or Search Location in Pune
-            </h2>
+      {/* 2. COMPACT CHOOSE LOCATION BAR */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+        <div className="flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-orange-600 shrink-0" />
+          <span className="text-xs font-bold text-slate-700">Choose Location:</span>
+        </div>
+
+        <div className="flex items-center gap-2 flex-1 max-w-sm sm:max-w-md justify-end">
+          <div className="relative flex-1">
+            <select
+              value={selectedLocationName || location.ward.name}
+              onChange={(e) => handleSelectLocation(e.target.value)}
+              className="w-full pl-3 pr-8 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 cursor-pointer appearance-none transition-all"
+            >
+              <optgroup label="PMC Administrative Wards">
+                {ALL_PUNE_LOCATIONS.filter((l) => l.isWard).map((loc) => (
+                  <option key={loc.name} value={loc.name}>
+                    {loc.name} ({loc.zone})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Pune Localities & Neighborhoods">
+                {ALL_PUNE_LOCATIONS.filter((l) => !l.isWard).map((loc) => (
+                  <option key={loc.name} value={loc.name}>
+                    {loc.name} ({loc.zone})
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
-          {selectedLocationName ? (
+
+          {selectedLocationName && (
             <button
               onClick={handleResetLocation}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              title="Reset to default GPS location"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 text-xs font-bold flex items-center gap-1 transition-colors shrink-0"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>Reset to Current GPS Location</span>
+              <span className="hidden sm:inline">Reset</span>
             </button>
-          ) : (
-            <span className="text-[11px] text-slate-400 font-medium">
-              Showing default detected location ({location.ward.name.split(':')[0]})
-            </span>
           )}
         </div>
-
-        {/* Input Box with Quick Search */}
-        <div className="relative">
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => {
-                setSearchInput(e.target.value);
-                setIsDropdownOpen(true);
-              }}
-              onFocus={() => setIsDropdownOpen(true)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && searchInput.trim()) {
-                  handleSelectLocation(searchInput.trim());
-                }
-              }}
-              placeholder="Enter locality (e.g. Kasba Peth, Shivajinagar, Kothrud, Hadapsar, Viman Nagar)..."
-              className="w-full pl-9 pr-24 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
-            />
-            <button
-              onClick={() => {
-                if (searchInput.trim()) handleSelectLocation(searchInput.trim());
-              }}
-              className="absolute right-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-[11px] font-bold shadow-xs transition-colors"
-            >
-              Check
-            </button>
-          </div>
-
-          {/* Autocomplete Dropdown */}
-          {isDropdownOpen && (
-            <div className="absolute top-full left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto bg-white rounded-xl border border-slate-200 shadow-lg p-1.5">
-              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Suggested Pune Neighborhoods
-              </div>
-              {PUNE_LOCALITIES.filter((l) =>
-                l.name.toLowerCase().includes(searchInput.toLowerCase()) ||
-                l.zone.toLowerCase().includes(searchInput.toLowerCase())
-              ).map((loc) => (
-                <button
-                  key={loc.name}
-                  onClick={() => handleSelectLocation(loc.name)}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-50 flex items-center justify-between text-xs transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="font-bold text-slate-800">{loc.name}</span>
-                    <span className="text-[10px] text-slate-400">({loc.zone})</span>
-                  </div>
-                  <span className="text-[10px] font-semibold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
-                    UHI: {loc.defaultUhi}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Quick Pick Chips */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
-            Quick Select:
-          </span>
-          {PUNE_LOCALITIES.slice(0, 5).map((loc) => {
-            const isCurrent = activeLocation.toLowerCase().includes(loc.name.toLowerCase().split(' - ')[0]);
-            return (
-              <button
-                key={loc.name}
-                onClick={() => handleSelectLocation(loc.name)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
-                  isCurrent
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                {loc.name.split(' - ')[0]}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      </div>
 
       {/* 3. HERO DEFINITIVE VERDICT CARD (ONE OUTPUT + ONE COMBINED NUMBER) */}
       <section
@@ -352,145 +429,71 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
             </div>
 
             {/* Right: THE ONE COMBINED NUMBER & RESOURCES BUTTON */}
-            <div className="lg:col-span-5 flex flex-col items-center justify-center p-5 bg-white rounded-2xl border border-slate-200/90 shadow-xs text-center">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                COMBINED ENSEMBLE CONFIDENCE
-              </span>
+            <div className="lg:col-span-5 p-5 bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col justify-between">
+              {/* Header: Title & Location on left, small Resources button on right */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="text-left">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                    COMBINED ENSEMBLE CONFIDENCE
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-1 text-xs font-bold text-slate-800">
+                    <MapPin className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                    <span className="truncate max-w-[190px] sm:max-w-[240px]">
+                      {activeLocation}
+                    </span>
+                  </div>
+                </div>
 
-              {/* Giant Number */}
-              <div className="my-1 flex items-baseline justify-center gap-0.5">
-                <span className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tight leading-none">
-                  {unifiedVerdict.unifiedConfidencePct}
-                </span>
-                <span className="text-2xl sm:text-3xl font-black text-orange-600">%</span>
+                {/* Small Resources button on right side */}
+                <button
+                  onClick={() => setIsMainResourcesModalOpen(true)}
+                  className="py-1 px-2.5 rounded-lg bg-slate-900 hover:bg-black text-white text-[11px] font-bold flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
+                  title="View Climatological Resources & Confidence"
+                >
+                  <Layers className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Resources</span>
+                </button>
               </div>
 
-              <span
-                className={`px-3 py-0.5 rounded-full text-xs font-bold ${
-                  unifiedVerdict.unifiedConfidencePct >= 90
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-blue-100 text-blue-800'
-                }`}
-              >
-                Very High Agreement
-              </span>
+              {/* Giant Number & Agreement Tag */}
+              <div className="my-2.5 text-center">
+                <div className="flex items-baseline justify-center gap-0.5">
+                  <span className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tight leading-none">
+                    {unifiedVerdict.unifiedConfidencePct}
+                  </span>
+                  <span className="text-2xl sm:text-3xl font-black text-orange-600">%</span>
+                </div>
 
-              {/* ONE BUTTON BELOW THE NUMBER: View Resources & Confidence */}
-              <button
-                onClick={() => setIsMainResourcesModalOpen(true)}
-                className="mt-3.5 w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-              >
-                <Layers className="w-3.5 h-3.5 text-orange-400" />
-                <span>View Climatological Resources & Confidence</span>
-              </button>
+                <div className="mt-1">
+                  <span
+                    className={`inline-block px-3 py-0.5 rounded-full text-xs font-bold ${
+                      unifiedVerdict.unifiedConfidencePct >= 90
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
+                    Very High Agreement
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 4. SECTIONS FOR THE 5 STRATEGIC HEATWAVE HORIZONS (Crisp, clean, no bulky text) */}
+      {/* 4. SECTIONS FOR STRATEGIC HEATWAVE HORIZONS IN CHRONOLOGICAL SEQUENCE */}
       <div className="space-y-4 pt-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-wider">
             Heatwave Outlook Across Strategic Time Horizons
           </h2>
-          <span className="text-xs text-slate-400 hidden sm:block">5 Forecast Horizons</span>
+          <span className="text-xs text-slate-400 hidden sm:block">
+            {orderedHorizons.length} Forecast Horizons
+          </span>
         </div>
 
         <div className="space-y-3.5">
-          {horizons.map((horizon: EarlyWarningHorizon) => {
-            const isComing = horizon.isHeatwaveComing;
-
-            return (
-              <div
-                key={horizon.id}
-                className={`p-4 sm:p-5 rounded-2xl bg-white border-2 transition-all ${
-                  isComing ? 'border-red-300/80 hover:border-red-400' : 'border-emerald-300/80 hover:border-emerald-400'
-                }`}
-              >
-                {/* Sector Header: Label, Verdict, and One Number */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider text-white ${
-                        isComing ? 'bg-orange-600' : 'bg-emerald-600'
-                      }`}
-                    >
-                      {horizon.timeRangeLabel}
-                    </span>
-                    <h3 className="text-sm font-extrabold text-slate-900">
-                      {horizon.timeRangeTitle.split('(')[0].trim()}
-                    </h3>
-                  </div>
-
-                  <div className="flex items-center gap-2.5">
-                    {/* Verdict Pill */}
-                    <span
-                      className={`px-2.5 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 ${
-                        isComing ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
-                      }`}
-                    >
-                      {isComing ? <Flame className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                      <span>{horizon.verdict}</span>
-                    </span>
-
-                    {/* Single Combined Number */}
-                    <div className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-right">
-                      <span className="text-xs font-black text-slate-900">
-                        {horizon.unifiedConfidencePct}%
-                      </span>
-                      <span className="text-[9px] text-slate-400 block -mt-0.5">Confidence</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Clean Metrics Grid: Arrival, Duration, Severity (No bulky description text) */}
-                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[10px] font-extrabold text-orange-600 uppercase block">
-                      WHEN WILL IT COME?
-                    </span>
-                    <p className="font-extrabold text-slate-900 mt-0.5">{horizon.expectedOnsetDates}</p>
-                  </div>
-
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase block">
-                      EXPECTED DURATION
-                    </span>
-                    <p className="font-extrabold text-slate-900 mt-0.5">{horizon.expectedDuration}</p>
-                  </div>
-
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase block">
-                      SEVERITY LEVEL
-                    </span>
-                    <p className="font-extrabold text-slate-900 mt-0.5">{horizon.severityLevel} Threat</p>
-                  </div>
-                </div>
-
-                {/* THE TWO BUTTONS PER SECTOR: Resources Button & Important Action/Protection Button */}
-                <div className="mt-3.5 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                  {/* Button 1: Resources & Confidence for this sector */}
-                  <button
-                    onClick={() => setActiveSectorResources(horizon)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors"
-                  >
-                    <Layers className="w-3.5 h-3.5 text-blue-600" />
-                    <span>View Resources & Confidence</span>
-                  </button>
-
-                  {/* Button 2: Important Action & Protection for this sector */}
-                  <button
-                    onClick={() => setActiveSectorAction(horizon)}
-                    className="px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors ml-auto"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
-                    <span>Important Action & Protection</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {orderedHorizons.map((horizon: EarlyWarningHorizon) => renderHorizonCard(horizon))}
         </div>
       </div>
 

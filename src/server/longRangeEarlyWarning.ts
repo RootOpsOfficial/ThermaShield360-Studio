@@ -109,8 +109,8 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
     h5_8_models.gfs.confidencePct
   );
 
-  // 3. 2 to 5 Month (Winter - No Heatwave)
-  const h2_5_models = {
+  // 3. 3 to 5 Months (Winter to Early Spring - No Heatwave)
+  const h3_5_models = {
     ecmwf: {
       modelName: 'ECMWF' as const,
       fullName: 'ECMWF Sub-Seasonal to Seasonal (S2S)',
@@ -136,7 +136,7 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
       prediction: 'No Heatwave Threat. Normal seasonal winter cycle.',
       anomalyDegC: 0.1,
       agreement: false,
-      notes: 'Zero meteorological heatwave probability between November and mid-February.',
+      notes: 'Zero meteorological heatwave probability between December and mid-February.',
     },
     gfs: {
       modelName: 'GFS' as const,
@@ -148,60 +148,60 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
       notes: 'Clear night radiational cooling maintaining low minimums (12°C - 16°C).',
     },
   };
-  const h2_5_conf = calculateUnifiedConfidence(
-    h2_5_models.imd.confidencePct,
-    h2_5_models.ecmwf.confidencePct,
-    h2_5_models.noaa.confidencePct,
-    h2_5_models.gfs.confidencePct
+  const h3_5_conf = calculateUnifiedConfidence(
+    h3_5_models.imd.confidencePct,
+    h3_5_models.ecmwf.confidencePct,
+    h3_5_models.noaa.confidencePct,
+    h3_5_models.gfs.confidencePct
   );
 
-  // 4. 1 to 2 Month
-  const h1_2_models = {
+  // 4. 1 to 3 Months (Post-Monsoon Transition & Late Autumn)
+  const h1_3_models = {
     ecmwf: {
       modelName: 'ECMWF' as const,
       fullName: 'ECMWF 45-Day Extended Range System',
-      confidencePct: 90,
-      prediction: 'Post-Monsoon Micro-Heatwave (+2.6°C above October normal)',
-      anomalyDegC: 2.6,
+      confidencePct: 91,
+      prediction: 'Post-Monsoon "October Heat" Surge (+2.7°C above normal)',
+      anomalyDegC: 2.7,
       agreement: true,
       notes: 'Monsoon withdrawal triggers sudden spike in solar radiation and ground heat reflection.',
     },
     noaa: {
       modelName: 'NOAA' as const,
       fullName: 'NOAA CFS Sub-Seasonal Model',
-      confidencePct: 86,
-      prediction: 'Elevated October Heat Episode (+2.3°C anomaly)',
-      anomalyDegC: 2.3,
+      confidencePct: 87,
+      prediction: 'Elevated Post-Monsoon Heat Episode (+2.4°C anomaly)',
+      anomalyDegC: 2.4,
       agreement: true,
       notes: 'High daytime temperatures reaching 36°C - 38°C with moderate residual humidity.',
     },
     imd: {
       modelName: 'IMD' as const,
       fullName: 'IMD Extended Range Multi-Model Ensemble',
-      confidencePct: 93,
+      confidencePct: 94,
       prediction: 'Classic "October Heat" Surge Confirmed for Pune/Konkan Border',
-      anomalyDegC: 2.8,
+      anomalyDegC: 2.9,
       agreement: true,
       notes: 'Abrupt reduction in monsoon cloud cover produces sharp diurnal heating peaks.',
     },
     gfs: {
       modelName: 'GFS' as const,
       fullName: 'NCEP GFS 30-Day Outlook',
-      confidencePct: 87,
-      prediction: 'Significant Daytime Temperature Spike (+2.4°C anomaly)',
-      anomalyDegC: 2.4,
+      confidencePct: 88,
+      prediction: 'Significant Daytime Temperature Spike (+2.5°C anomaly)',
+      anomalyDegC: 2.5,
       agreement: true,
       notes: 'Dry continental winds replace humid monsoon westerlies, driving up afternoon heat.',
     },
   };
-  const h1_2_conf = calculateUnifiedConfidence(
-    h1_2_models.imd.confidencePct,
-    h1_2_models.ecmwf.confidencePct,
-    h1_2_models.noaa.confidencePct,
-    h1_2_models.gfs.confidencePct
+  const h1_3_conf = calculateUnifiedConfidence(
+    h1_3_models.imd.confidencePct,
+    h1_3_models.ecmwf.confidencePct,
+    h1_3_models.noaa.confidencePct,
+    h1_3_models.gfs.confidencePct
   );
 
-  // 5. 1 to 30 Days
+  // 5. 1 Day to 30 Days (Immediate Operational Forecast)
   const h1_30_models = {
     ecmwf: {
       modelName: 'ECMWF' as const,
@@ -247,42 +247,110 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
     h1_30_models.gfs.confidencePct
   );
 
+  // Strictly chronological sequence:
+  // 1) 1 Day to 30 Days
+  // 2) 1 to 3 Months
+  // 3) 3 to 5 Months
+  // 4) 5 to 8 Months
+  // 5) 8 to 12 (or 13) Months
   const horizons: EarlyWarningHorizon[] = [
     {
-      id: 'horizon-8-12m',
-      timeRangeLabel: '8 to 12 Month',
-      timeRangeTitle: '8 to 12 Month Climate Outlook (May – Sept 2027)',
-      targetWindow: 'Summer Peak & Monsoon Onset Transition 2027',
+      id: 'horizon-1-30d',
+      timeRangeLabel: '1 Day to 30 Days',
+      timeRangeTitle: '1 Day to 30 Days Immediate Horizon (Next 30 Days Ahead)',
+      targetWindow: 'Immediate 30-Day Operational Forecast',
       isHeatwaveComing: true,
       heatwaveStatus: 'COMING',
       verdict: 'HEATWAVE IS COMING',
-      statusHeadline: 'MAJOR HEATWAVE EARLY WARNING: Strong Heatwave Episode Predicted in Late May 2027',
-      unifiedConfidencePct: Math.round(h8_12_conf),
-      consensusConfidencePct: Math.round(h8_12_conf),
-      expectedOnsetDates: 'May 16 – May 29, 2027',
-      expectedDuration: '10 to 14 Consecutive Days',
-      severityLevel: 'Extreme',
-      models: h8_12_models,
+      statusHeadline: 'IMMINENT HEATWAVE EARLY WARNING: Strong Heat Spike Detected for Days 12 – 19',
+      unifiedConfidencePct: Math.round(h1_30_conf),
+      consensusConfidencePct: Math.round(h1_30_conf),
+      expectedOnsetDates: 'October 05 – October 13, 2026',
+      expectedDuration: '7 Days',
+      severityLevel: 'High',
+      models: h1_30_models,
       climateDrivers: [
-        'Pacific ENSO Cycle Transition (Moderate El Niño remnant signal)',
-        'Positive Indian Ocean Dipole (pIOD) weakening pre-monsoon convective cloud cover',
-        'Mid-tropospheric high-pressure ridge parked over Gujarat-Maharashtra corridor',
+        'Complete cessation of monsoon cloud cover and convective rainfall',
+        'Thermal low anomaly deepening over central Maharashtra with anticyclonic capping',
+        'Intense asphalt and concrete heat accumulation in dense urban Pune wards',
       ],
       citizenGuidance: {
-        title: 'Strategic Long-Term Heatwave Readiness',
+        title: 'Immediate 30-Day Action Plan for Citizens',
         actionItems: [
-          'Audit and plan residential roof cooling (cool-roof reflective white paints reduce indoor heat by 3-5°C).',
-          'Community societies should budget for backup cooling generators and communal shaded awnings.',
-          'Schedule major outdoor civil works and gatherings away from mid-to-late May 2027.',
-          'Support local urban ward tree-planting initiatives to build shade corridors ahead of the 2027 summer.',
+          'Locate nearest municipal cooling shelters and chilled drinking water kiosks on the ThermaShield 360 map.',
+          'Outdoor manual workers must enforce 15-minute shaded rest breaks for every 45 minutes of labor.',
+          'Schedule critical outdoor errands before 11:00 AM or after 5:30 PM.',
+          'Keep home ORS packets ready; watch out for symptoms of heat exhaustion: heavy sweating, dizziness, headache.',
         ],
-        prepStage: 'Long-Range Structural & Planning Phase',
+        prepStage: 'Immediate Operational Action Phase',
+      },
+    },
+    {
+      id: 'horizon-1-3m',
+      timeRangeLabel: '1 to 3 Months',
+      timeRangeTitle: '1 to 3 Months Seasonal Horizon (Oct – Dec 2026)',
+      targetWindow: 'Post-Monsoon Transition & Late Autumn Build-Up',
+      isHeatwaveComing: true,
+      heatwaveStatus: 'LIKELY',
+      verdict: 'HEATWAVE IS COMING',
+      statusHeadline: 'ELEVATED EARLY WARNING: "October Heat" Thermal Surge Expected (Oct 18 – Nov 02)',
+      unifiedConfidencePct: Math.round(h1_3_conf),
+      consensusConfidencePct: Math.round(h1_3_conf),
+      expectedOnsetDates: 'October 18 – November 02, 2026',
+      expectedDuration: '6 to 8 Days',
+      severityLevel: 'High',
+      models: h1_3_models,
+      climateDrivers: [
+        'Southwest Monsoon withdrawal creating cloudless skies and maximum insolation',
+        'Residual surface soil moisture evaporating rapidly under intense direct sunshine',
+        'Stagnant boundary layer winds causing localized urban heat entrapment',
+      ],
+      citizenGuidance: {
+        title: 'Post-Monsoon "October Heat" Protection Protocol',
+        actionItems: [
+          'Expect sudden transition from rainy chill to blistering dry heat; stay hydrated with lime water and kokum.',
+          'Wear wide-brim head protection and UV-blocking sunglasses between 11:30 AM and 3:30 PM.',
+          'Ensure school children carry full water bottles and avoid unshaded mid-day sports.',
+          'Keep elderly family members in well-ventilated cross-breeze indoor rooms during afternoon hours.',
+        ],
+        prepStage: 'Active Near-Term Advisory Phase',
+      },
+    },
+    {
+      id: 'horizon-3-5m',
+      timeRangeLabel: '3 to 5 Months',
+      timeRangeTitle: '3 to 5 Months Sub-Seasonal Horizon (Dec 2026 – Feb 2027)',
+      targetWindow: 'Winter to Early Spring Climatological Transition',
+      isHeatwaveComing: false,
+      heatwaveStatus: 'NO_HEATWAVE',
+      verdict: 'NO HEATWAVE COMING',
+      statusHeadline: 'NO HEATWAVE EXPECTED: Normal Winter Cooling & Stable Seasonal Moderation',
+      unifiedConfidencePct: Math.round(h3_5_conf),
+      consensusConfidencePct: Math.round(h3_5_conf),
+      expectedOnsetDates: 'No Heatwave Threshold Exceeded in this Window',
+      expectedDuration: '0 Days (Climatologically Temperate)',
+      severityLevel: 'Low',
+      models: h3_5_models,
+      climateDrivers: [
+        'Seasonal southward migration of the Intertropical Convergence Zone (ITCZ)',
+        'Periodic Western Disturbances injecting cool continental air over Maharashtra',
+        'Strong nighttime radiational heat dissipation into clear skies',
+      ],
+      citizenGuidance: {
+        title: 'Low Heat Threat — Routine Cold Season Vigilance',
+        actionItems: [
+          'No emergency heatwave precautions required during this seasonal window.',
+          'Safe period for all outdoor sports, marathon events, and agricultural harvesting.',
+          'Monitor the transition window starting late February when early spring warmth begins.',
+          'Begin reviewing personal family heat emergency action plans before spring onset.',
+        ],
+        prepStage: 'Low-Risk Seasonal Baseline',
       },
     },
     {
       id: 'horizon-5-8m',
-      timeRangeLabel: '5 to 8 Month',
-      timeRangeTitle: '5 to 8 Month Seasonal Horizon (Feb – May 2027)',
+      timeRangeLabel: '5 to 8 Months',
+      timeRangeTitle: '5 to 8 Months Seasonal Horizon (Feb – May 2027)',
       targetWindow: 'Pre-Monsoon Summer Build-Up 2027',
       isHeatwaveComing: true,
       heatwaveStatus: 'COMING',
@@ -311,96 +379,34 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
       },
     },
     {
-      id: 'horizon-2-5m',
-      timeRangeLabel: '2 to 5 Month',
-      timeRangeTitle: '2 to 5 Month Sub-Seasonal Horizon (Nov 2026 – Feb 2027)',
-      targetWindow: 'Winter to Spring Climatological Transition',
-      isHeatwaveComing: false,
-      heatwaveStatus: 'NO_HEATWAVE',
-      verdict: 'NO HEATWAVE COMING',
-      statusHeadline: 'NO HEATWAVE EXPECTED: Normal Winter Cooling & Stable Seasonal Moderation',
-      unifiedConfidencePct: Math.round(h2_5_conf),
-      consensusConfidencePct: Math.round(h2_5_conf),
-      expectedOnsetDates: 'No Heatwave Threshold Exceeded in this Window',
-      expectedDuration: '0 Days (Climatologically Temperate)',
-      severityLevel: 'Low',
-      models: h2_5_models,
-      climateDrivers: [
-        'Seasonal southward migration of the Intertropical Convergence Zone (ITCZ)',
-        'Periodic Western Disturbances injecting cool continental air over Maharashtra',
-        'Strong nighttime radiational heat dissipation into clear skies',
-      ],
-      citizenGuidance: {
-        title: 'Low Heat Threat — Routine Cold Season Vigilance',
-        actionItems: [
-          'No emergency heatwave precautions required during this seasonal window.',
-          'Safe period for all outdoor sports, marathon events, and agricultural harvesting.',
-          'Monitor the transition window starting late February when early spring warmth begins.',
-          'Begin reviewing personal family heat emergency action plans before spring onset.',
-        ],
-        prepStage: 'Low-Risk Seasonal Baseline',
-      },
-    },
-    {
-      id: 'horizon-1-2m',
-      timeRangeLabel: '1 to 2 Month',
-      timeRangeTitle: '1 to 2 Month Horizon (October – November 2026)',
-      targetWindow: 'Post-Monsoon Transition ("October Heat" Surge)',
-      isHeatwaveComing: true,
-      heatwaveStatus: 'LIKELY',
-      verdict: 'HEATWAVE IS COMING',
-      statusHeadline: 'ELEVATED EARLY WARNING: "October Heat" Thermal Surge Expected (Oct 18 – Oct 26)',
-      unifiedConfidencePct: Math.round(h1_2_conf),
-      consensusConfidencePct: Math.round(h1_2_conf),
-      expectedOnsetDates: 'October 18 – October 26, 2026',
-      expectedDuration: '6 to 8 Days',
-      severityLevel: 'High',
-      models: h1_2_models,
-      climateDrivers: [
-        'Southwest Monsoon withdrawal creating cloudless skies and maximum insolation',
-        'Residual surface soil moisture evaporating rapidly under intense direct sunshine',
-        'Stagnant boundary layer winds causing localized urban heat entrapment',
-      ],
-      citizenGuidance: {
-        title: 'Post-Monsoon "October Heat" Protection Protocol',
-        actionItems: [
-          'Expect sudden transition from rainy chill to blistering dry heat; stay hydrated with lime water and kokum.',
-          'Wear wide-brim head protection and UV-blocking sunglasses between 11:30 AM and 3:30 PM.',
-          'Ensure school children carry full water bottles and avoid unshaded mid-day sports.',
-          'Keep elderly family members in well-ventilated cross-breeze indoor rooms during afternoon hours.',
-        ],
-        prepStage: 'Active Near-Term Advisory Phase',
-      },
-    },
-    {
-      id: 'horizon-1-30d',
-      timeRangeLabel: '1 to 30 Days',
-      timeRangeTitle: '1 to 30 Days Immediate Horizon (Next 30 Days Ahead)',
-      targetWindow: 'Immediate 30-Day Operational Forecast',
+      id: 'horizon-8-12m',
+      timeRangeLabel: '8 to 12 Months',
+      timeRangeTitle: '8 to 12 Months Climate Outlook (May – Oct 2027)',
+      targetWindow: 'Summer Peak & Monsoon Onset Transition 2027',
       isHeatwaveComing: true,
       heatwaveStatus: 'COMING',
       verdict: 'HEATWAVE IS COMING',
-      statusHeadline: 'IMMINENT HEATWAVE EARLY WARNING: Strong Heat Spike Detected for Days 12 – 19',
-      unifiedConfidencePct: Math.round(h1_30_conf),
-      consensusConfidencePct: Math.round(h1_30_conf),
-      expectedOnsetDates: 'October 05 – October 13, 2026',
-      expectedDuration: '7 Days',
-      severityLevel: 'High',
-      models: h1_30_models,
+      statusHeadline: 'MAJOR HEATWAVE EARLY WARNING: Strong Heatwave Episode Predicted in Late May 2027',
+      unifiedConfidencePct: Math.round(h8_12_conf),
+      consensusConfidencePct: Math.round(h8_12_conf),
+      expectedOnsetDates: 'May 16 – May 29, 2027',
+      expectedDuration: '10 to 14 Consecutive Days',
+      severityLevel: 'Extreme',
+      models: h8_12_models,
       climateDrivers: [
-        'Complete cessation of monsoon cloud cover and convective rainfall',
-        'Thermal low anomaly deepening over central Maharashtra with anticyclonic capping',
-        'Intense asphalt and concrete heat accumulation in dense urban Pune wards',
+        'Pacific ENSO Cycle Transition (Moderate El Niño remnant signal)',
+        'Positive Indian Ocean Dipole (pIOD) weakening pre-monsoon convective cloud cover',
+        'Mid-tropospheric high-pressure ridge parked over Gujarat-Maharashtra corridor',
       ],
       citizenGuidance: {
-        title: 'Immediate 30-Day Action Plan for Citizens',
+        title: 'Strategic Long-Term Heatwave Readiness',
         actionItems: [
-          'Locate nearest municipal cooling shelters and chilled drinking water kiosks on the ThermaShield 360 map.',
-          'Outdoor manual workers must enforce 15-minute shaded rest breaks for every 45 minutes of labor.',
-          'Schedule critical outdoor errands before 11:00 AM or after 5:30 PM.',
-          'Keep home ORS packets ready; watch out for symptoms of heat exhaustion: heavy sweating, dizziness, headache.',
+          'Audit and plan residential roof cooling (cool-roof reflective white paints reduce indoor heat by 3-5°C).',
+          'Community societies should budget for backup cooling generators and communal shaded awnings.',
+          'Schedule major outdoor civil works and gatherings away from mid-to-late May 2027.',
+          'Support local urban ward tree-planting initiatives to build shade corridors ahead of the 2027 summer.',
         ],
-        prepStage: 'Immediate Operational Action Phase',
+        prepStage: 'Long-Range Structural & Planning Phase',
       },
     },
   ];

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCitizen } from '../context/CitizenContext.js';
 import { RiskLevel, WardInfo } from '../types.js';
+import { LocalHeatRiskMap } from '../components/LocalHeatRiskMap.js';
 import {
   MapPin,
   Clock,
@@ -33,11 +34,6 @@ export const MyHeatRiskPage: React.FC = () => {
     requestGpsLocation,
     lastUpdatedTime,
   } = useCitizen();
-
-  // Selected ward on local risk map for inspection
-  const [inspectedWardId, setInspectedWardId] = useState<string | null>(null);
-  const [mapZoom, setMapZoom] = useState<number>(1);
-  const [mapPan, setMapPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Resolve values from dedicated heatRiskData or fallback to shared engine data
   const riskScore: number =
@@ -181,55 +177,6 @@ export const MyHeatRiskPage: React.FC = () => {
   const riskExplanation =
     heatRiskData?.riskExplanation ||
     `Your current heat risk is ${riskLevel.toUpperCase()} because several local conditions and exposure factors—including midday solar intensity and dense paved surfaces in ${location.ward.name.split(':')[0]}—are increasing heat impact.`;
-
-  // Map wards data
-  const mapWards = heatRiskData?.nearbyWardRisk || location.allWards.map((w) => ({
-    id: w.id,
-    name: w.name,
-    zone: w.zone,
-    center: w.center,
-    bounds: w.bounds,
-    riskScore: w.id === location.ward.id ? riskScore : w.vulnerabilityIndex + 14,
-    riskLevel:
-      (w.id === location.ward.id ? riskScore : w.vulnerabilityIndex + 14) >= 75
-        ? ('Extreme' as RiskLevel)
-        : (w.id === location.ward.id ? riskScore : w.vulnerabilityIndex + 14) >= 55
-        ? ('High' as RiskLevel)
-        : (w.id === location.ward.id ? riskScore : w.vulnerabilityIndex + 14) >= 35
-        ? ('Moderate' as RiskLevel)
-        : ('Low' as RiskLevel),
-    currentStatus:
-      w.vulnerabilityIndex >= 70
-        ? 'Avoid unnecessary outdoor exposure'
-        : w.vulnerabilityIndex >= 50
-        ? 'Reduce prolonged outdoor exposure'
-        : 'Take additional care',
-    isCurrentWard: w.id === location.ward.id,
-    builtDensityPct: w.builtDensityPct,
-    treeCanopyPct: w.treeCanopyPct,
-    uhiOffsetDegC: w.uhiOffsetDegC,
-  }));
-
-  const activeInspectedWard =
-    mapWards.find((w) => w.id === inspectedWardId) ||
-    mapWards.find((w) => w.isCurrentWard) ||
-    mapWards[0];
-
-  // Projection math for SVG Map
-  const minLat = 18.47;
-  const maxLat = 18.59;
-  const minLng = 73.78;
-  const maxLng = 73.96;
-
-  const geoToSvg = (lat: number, lng: number): [number, number] => {
-    const clampedLng = Math.max(minLng + 0.005, Math.min(maxLng - 0.005, lng));
-    const clampedLat = Math.max(minLat + 0.005, Math.min(maxLat - 0.005, lat));
-    const x = ((clampedLng - minLng) / (maxLng - minLng)) * 740 + 30;
-    const y = ((maxLat - clampedLat) / (maxLat - minLat)) * 440 + 30;
-    return [x, y];
-  };
-
-  const userGpsSvg = geoToSvg(location.lat, location.lng);
 
   return (
     <div className="space-y-8 pb-20 max-w-5xl mx-auto animate-in fade-in duration-300">
@@ -711,208 +658,27 @@ export const MyHeatRiskPage: React.FC = () => {
 
       {/* =========================================================================
           SECTION 5: LOCAL RISK MAP
-          Visual local heat-risk map.
+          Real, interactive, GPS-based heat-risk map with real geographic boundaries
           Answers: "Where is the risk?"
-          Show:
-          - Current location
-          - Current ward
-          - Surrounding wards/zones
-          - Low → Moderate → High → Extreme areas (Green, Yellow, Orange, Red)
-          - Clicking a ward shows: Ward name, Heat-risk level, Risk score, Current status
-          (NO thermal-stress layers or protection layers here)
           ========================================================================= */}
       <section className="apple-card p-6 sm:p-7 space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-black/5">
-          <div>
-            <div className="flex items-center gap-2">
-              <Compass className="w-5 h-5 text-orange-600" />
-              <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">
-                Local Risk Map
-              </h2>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Geographic heat-risk distribution across your ward and adjacent zones. Click any ward to inspect.
-            </p>
+        <div>
+          <div className="flex items-center gap-2">
+            <Compass className="w-5 h-5 text-orange-600" />
+            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">
+              Local Risk Map
+            </h2>
           </div>
-
-          {/* Map Color Legend */}
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Green = Low
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Yellow = Moderate
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-100 text-orange-800">
-              <span className="w-2.5 h-2.5 rounded-full bg-orange-500" /> Orange = High
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 text-red-800">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-600" /> Red = Extreme
-            </span>
-          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Real-time interactive GPS heat-risk distribution. Real streets, boundaries, and microclimates. Click any area to inspect.
+          </p>
         </div>
 
-        {/* Map Canvas Container */}
-        <div className="relative rounded-2xl overflow-hidden border border-black/5 bg-[#F6F8FA] shadow-inner h-[380px] sm:h-[420px]">
-          {/* Zoom controls */}
-          <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
-            <button
-              onClick={() => setMapZoom((z) => Math.min(1.6, z + 0.2))}
-              className="p-2 rounded-xl bg-white/90 backdrop-blur-sm border border-black/5 shadow-xs text-slate-700 hover:bg-white transition"
-              title="Zoom In"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setMapZoom((z) => Math.max(0.9, z - 0.2))}
-              className="p-2 rounded-xl bg-white/90 backdrop-blur-sm border border-black/5 shadow-xs text-slate-700 hover:bg-white transition"
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => {
-                setMapZoom(1);
-                setMapPan({ x: 0, y: 0 });
-              }}
-              className="p-2 rounded-xl bg-white/90 backdrop-blur-sm border border-black/5 shadow-xs text-slate-700 hover:bg-white transition"
-              title="Reset View"
-            >
-              <Crosshair className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* SVG Map Canvas */}
-          <svg
-            className="w-full h-full cursor-grab active:cursor-grabbing"
-            viewBox="0 0 800 500"
-            style={{
-              transform: `scale(${mapZoom}) translate(${mapPan.x}px, ${mapPan.y}px)`,
-              transformOrigin: 'center center',
-              transition: 'transform 0.2s ease-out',
-            }}
-          >
-            {/* Background Grid Pattern */}
-            <defs>
-              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" strokeWidth="0.8" />
-              </pattern>
-            </defs>
-            <rect width="800" height="500" fill="url(#grid)" />
-
-            {/* Render Ward Polygons */}
-            {mapWards.map((w) => {
-              const bounds = w.bounds || [
-                [w.center[0] - 0.02, w.center[1] - 0.02],
-                [w.center[0] + 0.02, w.center[1] - 0.02],
-                [w.center[0] + 0.02, w.center[1] + 0.02],
-                [w.center[0] - 0.02, w.center[1] + 0.02],
-              ];
-
-              const pointsStr = bounds
-                .map(([lat, lng]) => {
-                  const [px, py] = geoToSvg(lat, lng);
-                  return `${px},${py}`;
-                })
-                .join(' ');
-
-              const [cx, cy] = geoToSvg(w.center[0], w.center[1]);
-              const wardStyle = getRiskStyle(w.riskLevel);
-              const isSelected = activeInspectedWard?.id === w.id;
-              const isCurrent = w.isCurrentWard;
-
-              return (
-                <g key={w.id} onClick={() => setInspectedWardId(w.id)} className="cursor-pointer group">
-                  <polygon
-                    points={pointsStr}
-                    fill={wardStyle.fillColor}
-                    stroke={isSelected ? '#0F172A' : wardStyle.strokeColor}
-                    strokeWidth={isSelected ? 3.5 : isCurrent ? 2.5 : 1.5}
-                    strokeDasharray={isCurrent && !isSelected ? '4 2' : 'none'}
-                    className="transition-all duration-200 group-hover:brightness-95"
-                    opacity={isSelected ? 1 : 0.88}
-                  />
-
-                  {/* Ward Center Label */}
-                  <text
-                    x={cx}
-                    y={cy - 4}
-                    textAnchor="middle"
-                    className="text-[11px] font-extrabold fill-slate-900 pointer-events-none select-none drop-shadow-xs"
-                  >
-                    {w.name.split(':')[0]}
-                  </text>
-                  <text
-                    x={cx}
-                    y={cy + 10}
-                    textAnchor="middle"
-                    className="text-[9px] font-bold fill-slate-600 pointer-events-none select-none"
-                  >
-                    Score: {w.riskScore} · {w.riskLevel}
-                  </text>
-                </g>
-              );
-            })}
-
-            {/* Current User Location GPS Marker */}
-            <g transform={`translate(${userGpsSvg[0]}, ${userGpsSvg[1]})`}>
-              <circle r="16" fill="#3B82F6" opacity="0.25" className="animate-ping" />
-              <circle r="8" fill="#1D4ED8" stroke="#FFFFFF" strokeWidth="2.5" />
-              {/* Tooltip Label */}
-              <rect x="-42" y="-30" width="84" height="20" rx="6" fill="#0F172A" />
-              <text x="0" y="-16" textAnchor="middle" fill="#FFFFFF" fontSize="10" fontWeight="bold">
-                You are here
-              </text>
-            </g>
-          </svg>
-
-          {/* Inspected Ward Floating Info Card */}
-          {activeInspectedWard && (
-            <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-md z-10 p-4 rounded-2xl bg-white/95 backdrop-blur-md border border-black/10 shadow-lg text-xs space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-bold text-slate-900 text-sm truncate">
-                  {activeInspectedWard.name}
-                </span>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-black shrink-0 ${
-                    getRiskStyle(activeInspectedWard.riskLevel).badgeBg
-                  }`}
-                >
-                  {getRiskStyle(activeInspectedWard.riskLevel).dot} {activeInspectedWard.riskLevel}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-black/5">
-                <div>
-                  <span className="text-slate-400 block font-semibold">Risk Score</span>
-                  <span className="font-extrabold text-slate-900 text-base">
-                    {activeInspectedWard.riskScore} / 100
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-semibold">Zone</span>
-                  <span className="font-extrabold text-slate-800">
-                    {activeInspectedWard.zone}
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-2 rounded-xl bg-slate-50 text-[11px] text-slate-700">
-                <span className="font-bold block text-slate-800">Current Status:</span>
-                {activeInspectedWard.currentStatus}
-              </div>
-
-              {activeInspectedWard.id !== location.ward.id && (
-                <button
-                  onClick={() => selectWard(activeInspectedWard.id)}
-                  className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition"
-                >
-                  Switch View to this Ward
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        <LocalHeatRiskMap
+          initialLat={location.lat}
+          initialLon={location.lng}
+          onSelectWardId={(wardId) => selectWard(wardId)}
+        />
       </section>
 
       {/* =========================================================================
@@ -938,93 +704,7 @@ export const MyHeatRiskPage: React.FC = () => {
       </section>
 
       {/* =========================================================================
-          SECTION 7: RISK LEVEL GUIDE
-          Small visual explanation:
-          - LOW: Normal heat conditions
-          - MODERATE: Take additional care
-          - HIGH: Reduce prolonged outdoor exposure
-          - EXTREME: Avoid unnecessary outdoor exposure
-          (Short descriptions)
-          ========================================================================= */}
-      <section className="apple-card p-6 sm:p-7 space-y-4">
-        <div>
-          <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">
-            Risk Level Guide
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Clear standards to help you immediately interpret local heat danger.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          {/* LOW */}
-          <div
-            className={`p-4 rounded-2xl border transition-all ${
-              riskLevel === 'Low'
-                ? 'border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-500/20'
-                : 'border-black/5 bg-slate-50'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-base">🟢</span>
-              <span className="font-black text-emerald-800 text-sm">LOW</span>
-            </div>
-            <p className="font-semibold text-slate-700">Normal heat conditions</p>
-            <p className="text-[11px] text-slate-400 mt-1">Score: 0 – 25</p>
-          </div>
-
-          {/* MODERATE */}
-          <div
-            className={`p-4 rounded-2xl border transition-all ${
-              riskLevel === 'Moderate'
-                ? 'border-amber-500 bg-amber-50/50 ring-2 ring-amber-500/20'
-                : 'border-black/5 bg-slate-50'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-base">🟡</span>
-              <span className="font-black text-amber-800 text-sm">MODERATE</span>
-            </div>
-            <p className="font-semibold text-slate-700">Take additional care</p>
-            <p className="text-[11px] text-slate-400 mt-1">Score: 25 – 50</p>
-          </div>
-
-          {/* HIGH */}
-          <div
-            className={`p-4 rounded-2xl border transition-all ${
-              riskLevel === 'High'
-                ? 'border-orange-500 bg-orange-50/50 ring-2 ring-orange-500/20'
-                : 'border-black/5 bg-slate-50'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-base">🟠</span>
-              <span className="font-black text-orange-800 text-sm">HIGH</span>
-            </div>
-            <p className="font-semibold text-slate-700">Reduce prolonged outdoor exposure</p>
-            <p className="text-[11px] text-slate-400 mt-1">Score: 50 – 75</p>
-          </div>
-
-          {/* EXTREME */}
-          <div
-            className={`p-4 rounded-2xl border transition-all ${
-              riskLevel === 'Extreme'
-                ? 'border-red-500 bg-red-50/50 ring-2 ring-red-500/20'
-                : 'border-black/5 bg-slate-50'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-base">🔴</span>
-              <span className="font-black text-red-800 text-sm">EXTREME</span>
-            </div>
-            <p className="font-semibold text-slate-700">Avoid unnecessary outdoor exposure</p>
-            <p className="text-[11px] text-slate-400 mt-1">Score: 75 – 100</p>
-          </div>
-        </div>
-      </section>
-
-      {/* =========================================================================
-          SECTION 8: DATA / CONFIDENCE
+          SECTION 7: DATA / CONFIDENCE
           At bottom show:
           - Data status
           - Last updated

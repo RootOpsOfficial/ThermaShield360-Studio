@@ -49,6 +49,7 @@ export const CitizenHomePage: React.FC = () => {
     setCustomLocation,
     formatTemp,
     setActivePage,
+    navigateToHealthcareWithDirections,
   } = useCitizen();
 
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
@@ -923,15 +924,13 @@ export const CitizenHomePage: React.FC = () => {
                     >
                       <Phone className="w-3.5 h-3.5" />
                     </a>
-                    <a
-                      href={hosp.directionsUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
+                    <button
+                      onClick={() => navigateToHealthcareWithDirections(hosp)}
+                      className="p-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
                       title="Get Navigation Directions"
                     >
                       <Navigation className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                   </div>
                 </div>
               </div>

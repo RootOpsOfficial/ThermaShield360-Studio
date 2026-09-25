@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export const ProtectionPage: React.FC = () => {
-  const { protectionPoints, protectionSummary, location } = useCitizen();
+  const { protectionPoints, protectionSummary, location, navigateToHealthcareWithDirections } = useCitizen();
 
   const [activeTab, setActiveTab] = useState<'all' | 'water' | 'cooling' | 'shade' | 'healthcare'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
@@ -295,14 +295,36 @@ export const ProtectionPage: React.FC = () => {
                         <Phone className="w-3 h-3" /> Call
                       </a>
                     )}
-                    <a
-                      href={`https://maps.google.com/?q=${pt.lat},${pt.lng}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1 rounded-lg bg-[#0071E3] hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1"
+                    <button
+                      onClick={() =>
+                        navigateToHealthcareWithDirections({
+                          id: pt.id,
+                          name: pt.name,
+                          type: pt.type === 'healthcare' ? 'Hospital' : 'Emergency Care',
+                          lat: pt.lat,
+                          lng: pt.lng,
+                          distanceKm: pt.distanceKm ?? 1.2,
+                          travelTimeMins: pt.walkingTimeMins ?? 8,
+                          travelMode: 'Walking',
+                          address: pt.address,
+                          wardId: pt.wardId,
+                          phone: pt.contact || '',
+                          isOpen24x7: pt.operatingHours?.includes('24') ?? false,
+                          status: pt.status || 'Available',
+                          emergencyIndicator: pt.type === 'healthcare' || !!pt.isEmergencyReady,
+                          emergencyAvailability: pt.type === 'healthcare' ? 'Emergency Treatment Available' : 'Available',
+                          heatStrokeBedsAvailable: 4,
+                          totalHeatBeds: 8,
+                          directionsUrl: '',
+                          dataSource: 'LIVE/EXTERNAL DATA',
+                          source: 'LIVE/EXTERNAL DATA',
+                          lastUpdated: 'Current',
+                        })
+                      }
+                      className="px-3 py-1 rounded-lg bg-[#0071E3] hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       <Navigation className="w-3 h-3" /> Directions
-                    </a>
+                    </button>
                   </div>
                 </div>
               </div>

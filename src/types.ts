@@ -221,7 +221,7 @@ export interface ProtectionSummary {
 export interface HealthcareFacility {
   id: string;
   name: string;
-  type: 'Hospital' | 'Emergency Care' | 'Urban Clinic' | 'Heat Health Centre';
+  type: 'Hospital' | 'Emergency Care' | 'Urban Clinic' | 'Heat Health Centre' | 'Clinic' | 'Doctor';
   lat: number;
   lng: number;
   distanceKm: number;
@@ -229,14 +229,46 @@ export interface HealthcareFacility {
   travelMode: 'Walking' | 'Driving' | 'Ambulance';
   address: string;
   wardId: string;
-  phone: string;
-  isOpen24x7: boolean;
+  phone?: string;
+  website?: string;
+  isOpen24x7?: boolean;
   status: FacilityStatus;
   emergencyIndicator: boolean;
-  heatStrokeBedsAvailable: number;
-  totalHeatBeds: number;
-  directionsUrl: string;
-  dataSource: DataSourceLabel;
+  emergencyAvailability?: string;
+  heatStrokeBedsAvailable?: number;
+  totalHeatBeds?: number;
+  directionsUrl?: string;
+  dataSource: DataSourceLabel | string;
+  source?: 'LIVE/EXTERNAL DATA' | 'CURATED/ESTIMATED' | string;
+  sourceDetail?: string;
+  lastUpdated?: string;
+  osmId?: number | string;
+}
+
+export interface HealthcareRouteStep {
+  instruction: string;
+  distanceMeters: number;
+  durationSeconds: number;
+  name?: string;
+  maneuver?: {
+    type?: string;
+    modifier?: string;
+    location?: [number, number];
+  };
+}
+
+export interface HealthcareRouteResponse {
+  routeGeometry: {
+    type: 'LineString';
+    coordinates: [number, number][]; // [lon, lat]
+  };
+  distanceKm: number;
+  distanceMeters: number;
+  durationMins: number;
+  durationSeconds: number;
+  summary: string;
+  steps: HealthcareRouteStep[];
+  source: 'OSRM' | 'LOCAL_ROUTING_FALLBACK';
 }
 
 export interface RouteWaypoint {
@@ -244,20 +276,61 @@ export interface RouteWaypoint {
   lng: number;
   instruction: string;
   distanceMeters: number;
+  durationSeconds?: number;
   thermalExposure: RiskLevel;
+  heatRiskScore?: number;
   shadeCoveragePct: number;
+  solarExposure?: 'Low' | 'Moderate' | 'High' | 'Extreme';
+  riskColor?: string;
+  isHighRiskSegment?: boolean;
   nearbyProtection?: {
+    id?: string;
     name: string;
-    type: 'water' | 'cooling' | 'shade' | 'healthcare';
+    type: 'water' | 'cooling' | 'shade' | 'healthcare' | 'park';
+    distanceMeters?: number;
   };
+}
+
+export interface RouteProtectionSummary {
+  waterCount: number;
+  coolingCount: number;
+  shadeCount: number;
+  parkCount: number;
+  healthcareCount: number;
+  highRiskSegmentCount: number;
+  averageCanopyPct: number;
+  perceivedTempDeltaDegC: number;
+  nearestProtectionMeters: number;
+}
+
+export interface DepartureAdvice {
+  bestTimeToLeave: string;
+  peakHeatPeriod: string;
+  routeRisk: RiskLevel;
+  advice: string;
+  tempSavingEstimate: string;
+}
+
+export interface RouteResourcePoint {
+  id: string;
+  name: string;
+  type: 'water' | 'cooling' | 'shade' | 'healthcare' | 'park';
+  lat: number;
+  lng: number;
+  distanceKm?: number;
+  address?: string;
+  amenities?: string[];
+  status?: string;
 }
 
 export interface SafeRouteOption {
   id: string;
-  name: 'FASTEST ROUTE' | 'THERMAL-SAFE ROUTE';
+  name: string; // 'FASTEST ROUTE' | 'SAFE & FAST (SUM ALGORITHM)' | 'THERMAL-SAFE ROUTE'
+  routeType: 'fastest' | 'balanced' | 'safe';
   tagline: string;
   distanceKm: number;
   timeMins: number;
+  durationSeconds?: number;
   heatExposureLevel: RiskLevel;
   heatExposureScore: number;
   treeCanopyPct: number;
@@ -267,10 +340,40 @@ export interface SafeRouteOption {
     cooling: number;
     shade: number;
     healthcare: number;
+    parks?: number;
   };
+  protectionSummary?: RouteProtectionSummary;
   pathCoordinates: [number, number][];
   waypoints: RouteWaypoint[];
   recalculatedDueToRisk?: boolean;
+  rerouteExplanation?: string;
+  dataSource?: 'LIVE' | 'MODELLED' | 'CURATED';
+  sumAlgorithm?: {
+    algorithmName: string;
+    formula: string;
+    sumScore: number;
+    speedScore: number;
+    safetyScore: number;
+    timePenaltyPct: number;
+    heatReductionPct: number;
+    optimalChoice: boolean;
+  };
+}
+
+export interface RouteApiResponse {
+  origin: { lat: number; lng: number; label: string };
+  destination: { lat: number; lng: number; label: string };
+  currentThermalStress: RiskLevel;
+  weather?: {
+    temp: number;
+    humidity: number;
+    solarIrradiance: number;
+    wbgt: number;
+    utci: number;
+  };
+  departureAdvice?: DepartureAdvice;
+  routes: SafeRouteOption[];
+  nearbyResources?: RouteResourcePoint[];
 }
 
 export interface AdaptiveRecommendation {
@@ -386,19 +489,63 @@ export interface LocalRiskMapResponse {
   };
 }
 
+export type AlertSeverity =
+  | 'Normal'
+  | 'Developing / Awareness'
+  | 'High / Prepare'
+  | 'Harmful / Heat Alert'
+  | 'Critical / Immediate Action';
+
+export type CitizenAlertType =
+  | 'Heatwave Alert'
+  | 'High Heat-Risk Alert'
+  | 'Critical Heat Warning'
+  | 'Location-Specific Alert'
+  | string;
+
 export interface CitizenAlert {
   id: string;
-  type: 'Heatwave alert' | 'High heat-risk alert' | 'Critical heat alert' | 'Protection warning' | 'Location-specific safety advice';
+  type: CitizenAlertType;
   title: string;
-  riskLevel: RiskLevel;
+  shortMessage: string;
   whatIsHappening: string;
   where: string;
   when: string;
+  why: string;
   whatToDoNext: string[];
+  severity: AlertSeverity;
+  riskLevel: RiskLevel;
   issuedAt: string;
   isRead: boolean;
   urgent: boolean;
   recommendedAction: string;
+  dataSource: string;
+  status: 'Active' | 'Active - Urgent' | 'Escalating' | 'Resolved' | 'Expired' | 'De-escalated' | 'Watching';
+  confidence?: number;
+  dataTag: 'LIVE' | 'MODELLED' | 'ESTIMATED' | 'CURATED';
+  expectedStart?: string;
+  expectedEnd?: string;
+  peakPeriod?: string;
+  expectedDuration?: string;
+  targetFeature?: 'risk' | 'future' | 'protection' | 'route';
+  locationDetails?: {
+    ward: string;
+    zone: string;
+    city: string;
+    distanceRelevance?: string;
+  };
+}
+
+export interface AlertHistoryItem {
+  id: string;
+  title: string;
+  dateTime: string;
+  location: string;
+  severity: AlertSeverity;
+  shortReason: string;
+  status: 'Resolved' | 'Expired' | 'De-escalated' | 'Archived';
+  dataSource?: string;
+  riskLevel?: RiskLevel;
 }
 
 export interface CitizenMyRiskData {

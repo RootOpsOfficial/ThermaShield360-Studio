@@ -5,8 +5,9 @@ import { PUNE_WARDS, resolveWardByCoords, PROTECTION_POINTS, HEALTHCARE_FACILITI
 import { calculateWBGT, calculateUTCI, calculateHeatIndex, categorizeThermalStress, calculateCompositeRiskScore, getThermalCitizenExplanation } from './src/server/thermalEngine.js';
 import { fetchWeatherData } from './src/server/weatherService.js';
 import { generateRoutes } from './src/server/routingEngine.js';
-import { getAdaptiveRecommendations, getCitizenAlerts } from './src/server/intelligenceEngine.js';
+import { getAdaptiveRecommendations, getCitizenAlerts, getCitizenAlertHistory } from './src/server/intelligenceEngine.js';
 import { generateLongRangeEarlyWarning } from './src/server/longRangeEarlyWarning.js';
+import { fetchNearbyHealthcareFromOSM, getHealthcareFacilityById, calculateHealthcareRoute } from './src/server/healthcareService.js';
 import { RiskLevel, ProtectionSummary, WardInfo, CitizenMyRiskData, CitizenHeatRiskResponse, LocalRiskMapAreaFeature, LocalRiskMapResponse } from './src/server/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1167,51 +1168,124 @@ app.get('/api/protection/summary', (req: Request, res: Response) => {
   res.json(summary);
 });
 
-// 12. GET /api/healthcare/nearby
-app.get('/api/healthcare/nearby', (req: Request, res: Response) => {
-  const { lat, lng } = parseCoords(req);
+// 12. GET /api/healthcare/nearby?lat={lat}&lon={lon}&radius={meters}
+app.get('/api/healthcare/nearby', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const lonStr = (req.query.lon as string) || (req.query.lng as string);
+    const lon = lonStr ? parseFloat(lonStr) : lng;
+    const radiusStr = req.query.radius as string;
+    const radius = radiusStr ? parseInt(radiusStr, 10) : 6000;
 
-  const hospitalsWithDist = HEALTHCARE_FACILITIES.map((h) => {
-    const dist = calculateDistanceKm(lat, lng, h.lat, h.lng);
-    const driveMins = Math.round(Math.max(3, dist * 3.2));
-    const walkMins = Math.round(dist * 13);
-    return {
-      ...h,
-      distanceKm: dist,
-      travelTimeMins: h.travelMode === 'Walking' ? walkMins : driveMins,
-    };
-  });
+    const facilities = await fetchNearbyHealthcareFromOSM(lat, lon, radius);
+    res.json(facilities);
+  } catch (err) {
+    console.error('Error in /api/healthcare/nearby:', err);
+    res.status(500).json({ error: 'Failed to retrieve healthcare facilities' });
+  }
+});
 
-  hospitalsWithDist.sort((a, b) => a.distanceKm - b.distanceKm);
+// 12b. GET /api/healthcare/:id
+app.get('/api/healthcare/:id', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const lonStr = (req.query.lon as string) || (req.query.lng as string);
+    const lon = lonStr ? parseFloat(lonStr) : lng;
 
-  res.json(hospitalsWithDist);
+    const facility = await getHealthcareFacilityById(req.params.id, lat, lon);
+    if (!facility) {
+      return res.status(404).json({ error: 'Healthcare facility not found' });
+    }
+    res.json(facility);
+  } catch (err) {
+    console.error('Error in /api/healthcare/:id:', err);
+    res.status(500).json({ error: 'Failed to retrieve healthcare facility details' });
+  }
+});
+
+// 12c. POST /api/healthcare/route
+app.post('/api/healthcare/route', async (req: Request, res: Response) => {
+  try {
+    const { origin, destination, facilityName } = req.body || {};
+    if (!origin || !destination) {
+      return res.status(400).json({ error: 'Both origin and destination coordinates are required' });
+    }
+
+    const origLat = origin.lat;
+    const origLon = origin.lon !== undefined ? origin.lon : origin.lng;
+    const destLat = destination.lat;
+    const destLon = destination.lon !== undefined ? destination.lon : destination.lng;
+
+    if (origLat === undefined || origLon === undefined || destLat === undefined || destLon === undefined) {
+      return res.status(400).json({ error: 'Valid latitude and longitude are required for origin and destination' });
+    }
+
+    const routeData = await calculateHealthcareRoute(
+      { lat: origLat, lon: origLon },
+      { lat: destLat, lon: destLon },
+      facilityName || 'Healthcare Facility'
+    );
+    res.json(routeData);
+  } catch (err) {
+    console.error('Error in /api/healthcare/route:', err);
+    res.status(500).json({ error: 'Failed to calculate healthcare route' });
+  }
 });
 
 // 13. POST /api/routes
 app.post('/api/routes', async (req: Request, res: Response) => {
-  const { origin, destination, profile } = req.body || {};
-  const originLat = origin?.lat || 18.5314;
-  const originLng = origin?.lng || 73.8446;
-  const destLat = destination?.lat || 18.5134;
-  const destLng = destination?.lng || 73.8561;
+  try {
+    const originParam = req.body?.start || req.body?.origin || {};
+    const destParam = req.body?.destination || {};
 
-  const weather = await fetchWeatherData(originLat, originLng);
-  const wbgt = calculateWBGT(weather.current.temp, weather.current.humidity, weather.current.solarIrradiance, 2.5);
-  const utci = calculateUTCI(weather.current.temp, weather.current.humidity, 2.5, weather.current.solarIrradiance);
-  const riskLevel = categorizeThermalStress(wbgt, utci);
+    const originLat = originParam.lat !== undefined ? Number(originParam.lat) : (req.body?.startLat !== undefined ? Number(req.body.startLat) : 18.5314);
+    const originLng = originParam.lng !== undefined
+      ? Number(originParam.lng)
+      : (originParam.lon !== undefined
+      ? Number(originParam.lon)
+      : (req.body?.startLng !== undefined ? Number(req.body.startLng) : 73.8446));
 
-  const routes = generateRoutes(
-    { lat: originLat, lng: originLng, label: origin?.label || 'Current GPS' },
-    { lat: destLat, lng: destLng, label: destination?.label || 'Destination' },
-    riskLevel
-  );
+    const destLat = destParam.lat !== undefined ? Number(destParam.lat) : (req.body?.destLat !== undefined ? Number(req.body.destLat) : 18.5134);
+    const destLng = destParam.lng !== undefined
+      ? Number(destParam.lng)
+      : (destParam.lon !== undefined
+      ? Number(destParam.lon)
+      : (req.body?.destLng !== undefined ? Number(req.body.destLng) : 73.8561));
 
-  res.json({
-    origin: { lat: originLat, lng: originLng, label: origin?.label || 'Current GPS' },
-    destination: { lat: destLat, lng: destLng, label: destination?.label || 'Destination' },
-    currentThermalStress: riskLevel,
-    routes: [routes.fastest, routes.thermalSafe],
-  });
+    const originLabel = originParam.label || req.body?.startLabel || 'Current GPS';
+    const destLabel = destParam.label || req.body?.destLabel || 'Destination';
+
+    const weather = await fetchWeatherData(originLat, originLng);
+    const wbgt = calculateWBGT(weather.current.temp, weather.current.humidity, weather.current.solarIrradiance, 2.5);
+    const utci = calculateUTCI(weather.current.temp, weather.current.humidity, 2.5, weather.current.solarIrradiance);
+    const riskLevel = categorizeThermalStress(wbgt, utci);
+
+    const routesResult = await generateRoutes(
+      { lat: originLat, lng: originLng, label: originLabel },
+      { lat: destLat, lng: destLng, label: destLabel },
+      riskLevel,
+      weather.current.temp
+    );
+
+    res.json({
+      origin: { lat: originLat, lng: originLng, label: originLabel },
+      destination: { lat: destLat, lng: destLng, label: destLabel },
+      currentThermalStress: riskLevel,
+      weather: {
+        temp: weather.current.temp,
+        humidity: weather.current.humidity,
+        solarIrradiance: weather.current.solarIrradiance,
+        wbgt,
+        utci,
+      },
+      departureAdvice: routesResult.departureAdvice,
+      routes: [routesResult.safeAndFast, routesResult.thermalSafe, routesResult.fastest],
+      nearbyResources: routesResult.nearbyResources,
+    });
+  } catch (err) {
+    console.error('Error generating routes in /api/routes:', err);
+    res.status(500).json({ error: 'Failed to calculate thermal-safe routes' });
+  }
 });
 
 // 14. GET /api/adaptive-response
@@ -1242,15 +1316,59 @@ app.get('/api/adaptive-response', async (req: Request, res: Response) => {
 
 // 15. GET /api/alerts
 app.get('/api/alerts', async (req: Request, res: Response) => {
-  const { lat, lng } = parseCoords(req);
-  const { ward } = resolveLocationOrWard(req, lat, lng);
-  const weather = await fetchWeatherData(lat, lng);
-  const wbgt = calculateWBGT(weather.current.temp, weather.current.humidity, weather.current.solarIrradiance, 2.5);
-  const utci = calculateUTCI(weather.current.temp, weather.current.humidity, 2.5, weather.current.solarIrradiance);
-  const riskLevel = categorizeThermalStress(wbgt, utci);
+  try {
+    const { lat, lng } = parseCoords(req);
+    const { ward, city } = resolveLocationOrWard(req, lat, lng);
+    const weather = await fetchWeatherData(lat, lng);
+    const wbgt = calculateWBGT(weather.current.temp, weather.current.humidity, weather.current.solarIrradiance, 2.5);
+    const utci = calculateUTCI(weather.current.temp, weather.current.humidity, 2.5, weather.current.solarIrradiance);
+    const riskLevel = categorizeThermalStress(wbgt, utci);
 
-  const alerts = getCitizenAlerts(riskLevel, ward, weather.current.temp);
-  res.json(alerts);
+    const alerts = getCitizenAlerts(riskLevel, ward, weather.current.temp, {
+      wbgt,
+      utci,
+      humidity: weather.current.humidity,
+      solarIrradiance: weather.current.solarIrradiance,
+      city: city || 'Pune',
+      zone: ward.zone,
+      dataSource: weather.source,
+    });
+    const history = getCitizenAlertHistory(ward, city || 'Pune');
+
+    res.json({
+      alerts,
+      history,
+      location: {
+        ward: ward.name,
+        zone: ward.zone,
+        city: city || 'Pune',
+        lat,
+        lng,
+      },
+      thermalSummary: {
+        riskLevel,
+        wbgt,
+        utci,
+        temp: weather.current.temp,
+      },
+    });
+  } catch (err) {
+    console.error('Error in /api/alerts:', err);
+    res.status(500).json({ error: 'Failed to generate citizen alerts' });
+  }
+});
+
+// 15b. GET /api/alerts/history
+app.get('/api/alerts/history', (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const { ward, city } = resolveLocationOrWard(req, lat, lng);
+    const history = getCitizenAlertHistory(ward, city || 'Pune');
+    res.json(history);
+  } catch (err) {
+    console.error('Error in /api/alerts/history:', err);
+    res.status(500).json({ error: 'Failed to retrieve alert history' });
+  }
 });
 
 // Mount Vite or static build

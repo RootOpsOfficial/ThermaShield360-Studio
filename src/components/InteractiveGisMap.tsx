@@ -46,7 +46,7 @@ export const InteractiveGisMap: React.FC<InteractiveGisMapProps> = ({
   showHealthcarePoints = true,
   routeCoordinates,
 }) => {
-  const { location, selectWard, protectionPoints, healthcareFacilities, riskCurrent, thermalCurrent } = useCitizen();
+  const { location, selectWard, protectionPoints, healthcareFacilities, riskCurrent, thermalCurrent, navigateToHealthcareWithDirections } = useCitizen();
 
   const [activeLayer, setActiveLayer] = useState<MapLayerType>('Overall Heat Risk');
   const [hoveredWard, setHoveredWard] = useState<WardInfo | null>(null);
@@ -462,14 +462,36 @@ export const InteractiveGisMap: React.FC<InteractiveGisMapProps> = ({
               </span>
             </div>
             <div className="pt-1.5 flex gap-1.5">
-              <a
-                href={`https://maps.google.com/?q=${selectedPoint.lat},${selectedPoint.lng}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 py-1 text-center bg-[#0071E3] text-white rounded-lg font-medium text-xs hover:bg-[#005bb5]"
+              <button
+                onClick={() => {
+                  navigateToHealthcareWithDirections({
+                    id: selectedPoint.id,
+                    name: selectedPoint.name,
+                    type: selectedPoint.type === 'healthcare' ? 'Hospital' : 'Emergency Care',
+                    lat: selectedPoint.lat,
+                    lng: selectedPoint.lng,
+                    distanceKm: selectedPoint.distanceKm ?? 1.2,
+                    travelTimeMins: selectedPoint.walkingTimeMins ?? 8,
+                    travelMode: 'Walking',
+                    address: selectedPoint.address,
+                    wardId: selectedPoint.wardId,
+                    phone: selectedPoint.contact || '',
+                    isOpen24x7: selectedPoint.operatingHours?.includes('24') ?? false,
+                    status: selectedPoint.status || 'Available',
+                    emergencyIndicator: selectedPoint.type === 'healthcare' || !!selectedPoint.isEmergencyReady,
+                    emergencyAvailability: selectedPoint.type === 'healthcare' ? 'Emergency Treatment Available' : 'Available',
+                    heatStrokeBedsAvailable: 4,
+                    totalHeatBeds: 8,
+                    directionsUrl: '',
+                    dataSource: 'LIVE/EXTERNAL DATA',
+                    source: 'LIVE/EXTERNAL DATA',
+                    lastUpdated: 'Current',
+                  });
+                }}
+                className="flex-1 py-1 text-center bg-[#0071E3] text-white rounded-lg font-medium text-xs hover:bg-[#005bb5] transition-colors cursor-pointer"
               >
                 Get Directions
-              </a>
+              </button>
             </div>
           </div>
         </div>

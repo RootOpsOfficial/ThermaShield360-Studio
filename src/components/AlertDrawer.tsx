@@ -149,9 +149,17 @@ export const AlertDrawer: React.FC = () => {
                       onClick={() => {
                         markAlertRead(alert.id);
                         setIsNotificationOpen(false);
-                        if (alert.recommendedAction.includes('Cooling')) setActivePage('protection');
-                        else if (alert.recommendedAction.includes('Route')) setActivePage('route');
-                        else setActivePage('adaptive');
+                        if (alert.targetFeature) {
+                          setActivePage(alert.targetFeature as any);
+                        } else if (alert.recommendedAction.includes('Forecast')) {
+                          setActivePage('future');
+                        } else if (alert.recommendedAction.includes('Cooling') || alert.recommendedAction.includes('Protection')) {
+                          setActivePage('protection');
+                        } else if (alert.recommendedAction.includes('Route')) {
+                          setActivePage('route');
+                        } else {
+                          setActivePage('risk');
+                        }
                       }}
                       className="flex-1 py-1.5 px-3 rounded-xl bg-[#1D1D1F] hover:bg-black text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm transition-all"
                     >
@@ -172,6 +180,20 @@ export const AlertDrawer: React.FC = () => {
               );
             })
           )}
+        </div>
+
+        {/* Footer Link to Alerts Page */}
+        <div className="p-3.5 border-t border-black/5 bg-slate-50 flex items-center justify-between">
+          <button
+            onClick={() => {
+              setIsNotificationOpen(false);
+              setActivePage('alerts');
+            }}
+            className="w-full py-2 px-3 rounded-xl bg-slate-200/80 hover:bg-slate-300 text-slate-800 text-xs font-bold text-center transition-colors flex items-center justify-center gap-1.5"
+          >
+            <span>Open Full Citizen Alerts Portal</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     </div>

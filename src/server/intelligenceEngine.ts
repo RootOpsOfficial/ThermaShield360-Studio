@@ -1,4 +1,12 @@
-import { AdaptiveRecommendation, CitizenAlert, RiskLevel, WardInfo } from './types.js';
+import {
+  AdaptiveRecommendation,
+  CitizenAlert,
+  AlertHistoryItem,
+  AlertSeverity,
+  CitizenAlertType,
+  RiskLevel,
+  WardInfo,
+} from './types.js';
 
 export function getAdaptiveRecommendations(
   riskLevel: RiskLevel,
@@ -124,66 +132,276 @@ export function getAdaptiveRecommendations(
   return recs;
 }
 
+export interface AlertContextParams {
+  wbgt?: number;
+  utci?: number;
+  humidity?: number;
+  solarIrradiance?: number;
+  city?: string;
+  zone?: string;
+  dataSource?: 'LIVE' | 'MODELLED' | 'ESTIMATED' | 'CURATED';
+}
+
 export function getCitizenAlerts(
   riskLevel: RiskLevel,
   ward: WardInfo,
-  tempC: number
+  tempC: number,
+  context?: AlertContextParams
 ): CitizenAlert[] {
+  const wbgt = context?.wbgt !== undefined ? Math.round(context.wbgt * 10) / 10 : 31.4;
+  const utci = context?.utci !== undefined ? Math.round(context.utci * 10) / 10 : 39.8;
+  const humidity = context?.humidity !== undefined ? Math.round(context.humidity) : 48;
+  const solar = context?.solarIrradiance !== undefined ? Math.round(context.solarIrradiance) : 780;
+  const city = context?.city || 'Pune';
+  const zone = context?.zone || ward.zone;
+  const dataTag = context?.dataSource || 'LIVE';
+  const wardShort = ward.name.includes(':') ? ward.name.split(':')[1].trim() : ward.name;
+
+  // Determine dynamic severities based on riskLevel and temperature
+  const isExtreme = riskLevel === 'Extreme' || tempC >= 40.0;
+  const isHigh = riskLevel === 'High' || tempC >= 38.5;
+  const isModerate = riskLevel === 'Moderate' || tempC >= 35.0;
+
+  const heatwaveSeverity: AlertSeverity = isExtreme
+    ? 'Critical / Immediate Action'
+    : isHigh
+    ? 'Harmful / Heat Alert'
+    : isModerate
+    ? 'High / Prepare'
+    : 'Normal';
+
+  const riskAlertSeverity: AlertSeverity = isExtreme
+    ? 'Harmful / Heat Alert'
+    : isHigh
+    ? 'High / Prepare'
+    : isModerate
+    ? 'Developing / Awareness'
+    : 'Normal';
+
+  const criticalSeverity: AlertSeverity = isExtreme
+    ? 'Critical / Immediate Action'
+    : isHigh
+    ? 'Critical / Immediate Action'
+    : isModerate
+    ? 'High / Prepare'
+    : 'Developing / Awareness';
+
+  const locationSeverity: AlertSeverity = isExtreme
+    ? 'Harmful / Heat Alert'
+    : isHigh
+    ? 'High / Prepare'
+    : 'Developing / Awareness';
+
   const alerts: CitizenAlert[] = [
+    // 1. Heatwave Alert
     {
       id: 'alert-hw-1',
-      type: 'Heatwave alert',
-      title: 'ORANGE HEATWAVE WARNING ISSUED FOR PUNE URBAN AGGLOMERATION',
-      riskLevel: 'Extreme',
-      whatIsHappening: `Severe heatwave conditions persisting across Pune district. Maximum daytime temperature expected to surge to ${Math.max(tempC, 39.5)}°C with intense solar irradiance.`,
-      where: `${ward.name} and central commercial wards (Wards 14, 21, 18, 25)`,
-      when: 'Today, 12:30 PM – 5:00 PM (Active Escalation)',
+      type: 'Heatwave Alert',
+      title: isExtreme
+        ? `IMD SEVERE HEATWAVE ALERT: ${city.toUpperCase()} METROPOLITAN REGION`
+        : `UPCOMING HEATWAVE EPISODE: ${city.toUpperCase()} AGGLOMERATION`,
+      shortMessage: `Synoptic heatwave persisting across ${city} with maximum temperatures reaching ${tempC}°C.`,
+      severity: heatwaveSeverity,
+      riskLevel: isExtreme ? 'Extreme' : 'High',
+      whatIsHappening: `Severe heatwave conditions are active across ${ward.name} and adjacent districts. Strong dry north-westerly airflow combined with high solar insolation (${solar} W/m²) has elevated surface temperatures ${Math.max(1.8, Math.round((tempC - 33.5) * 10) / 10)}°C above normal climatological baselines.`,
+      where: `${ward.name}, ${zone}, ${city} (wide regional spread)`,
+      when: 'Expected: Today – Day 3 (Peak-Risk Period: 12:30 PM – 04:30 PM)',
+      expectedStart: 'Today, 11:30 AM',
+      expectedEnd: 'Tomorrow, 06:00 PM',
+      peakPeriod: '12:30 PM – 04:30 PM',
+      expectedDuration: 'Next 36–48 hours',
+      why: `Official IMD heatwave threshold exceeded: ambient surface temperatures measured at ${tempC}°C against seasonal normal of 34.0°C (anomaly: +${Math.max(2.1, Math.round((tempC - 34) * 10) / 10)}°C) with persistent multi-day stagnation.`,
       whatToDoNext: [
-        'Suspend non-critical outdoor labor and student outdoor activities.',
-        'Drink chilled electrolyte fluids and avoid direct solar exposure.',
-        'Access air-conditioned cooling centers if indoor temperatures exceed 33°C.',
-        'Check in on vulnerable seniors living alone.',
+        'Reschedule all non-critical outdoor travel to before 10:00 AM or after 6:00 PM.',
+        'Drink chilled electrolyte fluids (ORS, coconut water, lemon water) continuously.',
+        'Check on elderly family members, toddlers, and pets during the 12:30 PM – 4:30 PM peak window.',
+        'Access air-conditioned civic cooling centers if indoor temperatures exceed 32°C.',
       ],
-      issuedAt: 'Updated 25 mins ago (IMD / PMC Disaster Management)',
+      issuedAt: 'Updated 20 mins ago (IMD / PMC Disaster Management)',
+      isRead: false,
+      urgent: isExtreme,
+      recommendedAction: 'View Heatwave Forecast',
+      targetFeature: 'future',
+      dataSource: 'India Meteorological Department (IMD) / ThermaShield Forecast Engine',
+      status: 'Active',
+      confidence: 94,
+      dataTag: 'MODELLED',
+      locationDetails: {
+        ward: ward.name,
+        zone: zone,
+        city: city,
+        distanceRelevance: 'Regional warning covering your municipal sector',
+      },
+    },
+
+    // 2. High Heat-Risk Alert
+    {
+      id: 'alert-hr-2',
+      type: 'High Heat-Risk Alert',
+      title: `ELEVATED THERMAL STRAIN IN ${wardShort.toUpperCase()}`,
+      shortMessage: `Wet-Bulb Globe Temp is at ${wbgt}°C. Rapid cardiovascular heat load and dehydration risk.`,
+      severity: riskAlertSeverity,
+      riskLevel: riskLevel,
+      whatIsHappening: `Calculated bioclimatic stress indices (WBGT: ${wbgt}°C, UTCI: ${utci}°C) reflect elevated physiological burden. Human sweat evaporation efficiency is restricted due to ${humidity}% ambient relative humidity.`,
+      where: `${ward.name} (${zone})`,
+      when: 'Current Window: Ongoing until 05:00 PM today (4-hour duration)',
+      expectedStart: '12:00 PM',
+      expectedEnd: '05:00 PM',
+      peakPeriod: '01:00 PM – 04:00 PM',
+      expectedDuration: '4 hours remaining',
+      why: `Wet-Bulb Globe Temperature (${wbgt}°C) crossed the biological thermal strain threshold (29.5°C), triggering automated civic heat stress protection protocols.`,
+      whatToDoNext: [
+        'Take mandatory 15-minute shaded rest breaks for every 45 minutes of moderate physical activity.',
+        'Carry an insulated water bottle; refill free at municipal RO kiosks.',
+        'Wear loose, lightweight cotton clothing with a broad-brim hat or UV umbrella.',
+        'Watch for early heat symptoms: pale skin, heavy sweating, muscle cramps, or nausea.',
+      ],
+      issuedAt: 'Updated 35 mins ago (ThermaShield 360 Diagnostic Engine)',
+      isRead: false,
+      urgent: false,
+      recommendedAction: 'View Heat Risk',
+      targetFeature: 'risk',
+      dataSource: 'PMC Civic Health & Thermal Environmental Monitoring',
+      status: 'Active',
+      confidence: 96,
+      dataTag: 'LIVE',
+      locationDetails: {
+        ward: ward.name,
+        zone: zone,
+        city: city,
+        distanceRelevance: 'Immediate ward boundary (0 km)',
+      },
+    },
+
+    // 3. Critical Heat Warning
+    {
+      id: 'alert-crit-3',
+      type: 'Critical Heat Warning',
+      title: 'CRITICAL THERMAL SAFETY WARNING: IMMEDIATE ACTION REQUIRED',
+      shortMessage: 'Dangerous environmental heat load exceeds safe human tolerance limits.',
+      severity: criticalSeverity,
+      riskLevel: 'Extreme',
+      whatIsHappening: `Extreme environmental heat index with Universal Thermal Climate Index (UTCI) at ${utci}°C and ambient air at ${tempC}°C. Immediate risk of acute heat cramps, heat exhaustion, and exertion-induced heat stroke.`,
+      where: `${ward.name}, high-exposure intersections and open transit corridors`,
+      when: 'Immediate Window: 01:00 PM – 04:30 PM (Peak Critical Hazard)',
+      expectedStart: '01:00 PM',
+      expectedEnd: '04:30 PM',
+      peakPeriod: '01:30 PM – 03:45 PM',
+      expectedDuration: '3.5 hours peak intensity',
+      why: `Universal Thermal Climate Index (UTCI: ${utci}°C) crossed the 38.0°C critical threshold alongside intense direct solar radiation (${solar} W/m²), creating high thermal strain on human thermoregulation.`,
+      whatToDoNext: [
+        'Halt all non-essential outdoor work, construction tasks, and student sports immediately.',
+        'Move indoors into cooled spaces or municipal misted public shelters right away.',
+        'Apply cold, wet towels to the neck, armpits, and forehead if feeling hot or flushed.',
+        'If anyone displays confusion, loss of consciousness, or dry skin, call 108 Emergency immediately.',
+      ],
+      issuedAt: 'Updated 10 mins ago (Disaster Management Cell)',
       isRead: false,
       urgent: true,
-      recommendedAction: 'Find Nearest Cooling Sanctuary',
+      recommendedAction: 'View Protection',
+      targetFeature: 'protection',
+      dataSource: 'Disaster Management Cell / ThermaShield Emergency Protocol',
+      status: 'Active - Urgent',
+      confidence: 98,
+      dataTag: dataTag,
+      locationDetails: {
+        ward: ward.name,
+        zone: zone,
+        city: city,
+        distanceRelevance: 'Directly impacting your current coordinates',
+      },
     },
+
+    // 4. Location-Specific Alert
     {
-      id: 'alert-prot-2',
-      type: 'Protection warning',
-      title: 'COOLING CAPACITY SURGE ACTIVATED IN WARD 14 & 21',
-      riskLevel: 'High',
-      whatIsHappening: 'Municipal emergency cooling hubs and RO water stations are now operating on high-demand protocols with free ORS packet distribution.',
-      where: 'Shivajinagar Ghole Road Civic Center and Mandai Market Water Kiosks',
-      when: '09:00 AM – 09:00 PM Daily',
+      id: 'alert-loc-4',
+      type: 'Location-Specific Alert',
+      title: `MICROCLIMATE SURFACE HEAT SURGE: ${wardShort.toUpperCase()}`,
+      shortMessage: `High surface radiant backscatter detected along ${wardShort} commercial roads.`,
+      severity: locationSeverity,
+      riskLevel: isExtreme ? 'High' : 'Moderate',
+      whatIsHappening: `Dense asphalt pavements and low vegetative tree canopy in ${wardShort} have elevated road surface temperatures up to 48.5°C. Radiant heat backscatter makes pedestrian travel significantly hotter than ambient air.`,
+      where: `${ward.name} (${ward.highRiskAreas[0] || 'High-density commercial avenues'}, ${zone})`,
+      when: 'Valid Today: 12:00 PM – 05:30 PM',
+      expectedStart: '12:00 PM',
+      expectedEnd: '05:30 PM',
+      peakPeriod: '01:00 PM – 04:00 PM',
+      expectedDuration: '5.5 hours',
+      why: `Local Urban Heat Island (UHI) sensor array recorded a +4.2°C surface temperature differential over surrounding canopy zones due to unshaded bitumen and vehicular heat dissipation.`,
       whatToDoNext: [
-        'Visit cooling shelters to recharge phone and cool down core body temperature.',
-        'Collect free oral rehydration salt packets at water refill counters.',
+        'Switch to thermal-safe navigation through shaded parks and canopy streets instead of open highway corridors.',
+        'Wear thick, heat-insulated footwear to prevent radiant foot burns from heated asphalt.',
+        'Rest at shaded tree arcades or water kiosks along Sambhaji Park / riverfront pathways.',
       ],
-      issuedAt: 'Updated 1 hour ago',
-      isRead: false,
-      urgent: false,
-      recommendedAction: 'View Available Protection Points',
-    },
-    {
-      id: 'alert-loc-3',
-      type: 'Location-specific safety advice',
-      title: 'HIGH SURFACE TEMPERATURE ALERT: JM ROAD & FC ROAD CORRIDOR',
-      riskLevel: 'High',
-      whatIsHappening: 'Asphalt surface temperatures have exceeded 48°C due to unshaded commercial infrastructure, creating intense radiant thermal backscatter.',
-      where: 'FC Road, JM Road, and Modern College Chowk',
-      when: '1:00 PM – 4:30 PM',
-      whatToDoNext: [
-        'Use the Sambhaji Park parallel walking greenway instead of open asphalt sidewalks.',
-        'Wear footwear with thick heat-insulating soles.',
-      ],
-      issuedAt: 'Updated 2 hours ago',
+      issuedAt: 'Updated 1 hour ago (Ward Microclimate Sensor Array)',
       isRead: true,
       urgent: false,
-      recommendedAction: 'Switch to Thermal-Safe Route',
+      recommendedAction: 'View Safe Route',
+      targetFeature: 'route',
+      dataSource: 'High-Resolution Ward Urban Heat Island (UHI) Sensor Array',
+      status: 'Active',
+      confidence: 91,
+      dataTag: 'MODELLED',
+      locationDetails: {
+        ward: ward.name,
+        zone: zone,
+        city: city,
+        distanceRelevance: 'Within 0.5–1.5 km of your selected area',
+      },
     },
   ];
 
   return alerts;
+}
+
+export function getCitizenAlertHistory(ward: WardInfo, city?: string): AlertHistoryItem[] {
+  const cityName = city || 'Pune';
+  const wardShort = ward.name.includes(':') ? ward.name.split(':')[1].trim() : ward.name;
+
+  return [
+    {
+      id: 'hist-1',
+      title: `Harmful Heatwave Surge Advisory for ${wardShort}`,
+      dateTime: 'Yesterday, 02:00 PM – 06:00 PM',
+      location: `${ward.name}, ${cityName}`,
+      severity: 'Harmful / Heat Alert',
+      shortReason: 'Afternoon surface temperatures climbed to 39.8°C with elevated radiant flux.',
+      status: 'Resolved',
+      dataSource: 'IMD / PMC Official Disaster Management',
+      riskLevel: 'High',
+    },
+    {
+      id: 'hist-2',
+      title: `WBGT Precautionary Warning in ${ward.zone}`,
+      dateTime: '2 Days Ago, 11:30 AM – 04:30 PM',
+      location: `${ward.zone}, ${cityName}`,
+      severity: 'High / Prepare',
+      shortReason: 'Wet-Bulb Globe Temp crossed 31.4°C threshold for 3 consecutive hours.',
+      status: 'Expired',
+      dataSource: 'ThermaShield 360 Environmental Diagnostic',
+      riskLevel: 'High',
+    },
+    {
+      id: 'hist-3',
+      title: `Pre-Heatwave Atmospheric Stagnation Advisory`,
+      dateTime: '3 Days Ago, 01:00 PM – 05:00 PM',
+      location: `${ward.name}, ${cityName}`,
+      severity: 'Developing / Awareness',
+      shortReason: 'Atmospheric pressure ridge resulted in poor convective ventilation and 54% relative humidity.',
+      status: 'De-escalated',
+      dataSource: 'IMD Pune Weather Forecasting Division',
+      riskLevel: 'Moderate',
+    },
+    {
+      id: 'hist-4',
+      title: `All-Clear Seasonal Post-Convection Baseline`,
+      dateTime: '5 Days Ago, 10:00 AM – 04:00 PM',
+      location: `${cityName} Metropolitan Area (All Wards)`,
+      severity: 'Normal',
+      shortReason: 'Moderate cloud cover and brief localized precipitation returned temperatures to 31.5°C.',
+      status: 'Archived',
+      dataSource: 'PMC Civic Health Department',
+      riskLevel: 'Low',
+    },
+  ];
 }

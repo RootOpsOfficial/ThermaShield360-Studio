@@ -7,10 +7,8 @@ import {
   ThermometerSun,
   Map,
   CalendarRange,
-  Shield,
   Cross,
   Route,
-  Activity,
   Bell,
   Settings,
   Sparkles,
@@ -24,7 +22,7 @@ interface SidebarItem {
 }
 
 export const CitizenSidebar: React.FC = () => {
-  const { activePage, setActivePage, unreadAlertCount } = useCitizen();
+  const { activePage, setActivePage } = useCitizen();
 
   const items: SidebarItem[] = [
     { id: 'home', label: 'Home', icon: Home },
@@ -34,7 +32,7 @@ export const CitizenSidebar: React.FC = () => {
     { id: 'map', label: 'Heat Risk Map', icon: Map },
     { id: 'healthcare', label: 'Nearby Healthcare', icon: Cross },
     { id: 'route', label: 'Safe Route', icon: Route },
-    { id: 'alerts', label: 'Alerts', icon: Bell, badge: unreadAlertCount > 0 ? unreadAlertCount : undefined },
+    { id: 'alerts', label: 'Alerts', icon: Bell },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -97,8 +95,8 @@ export const CitizenSidebar: React.FC = () => {
           { id: 'risk' as CitizenPage, label: 'Risk', icon: Flame },
           { id: 'future' as CitizenPage, label: 'Warning', icon: CalendarRange },
           { id: 'map' as CitizenPage, label: 'Map', icon: Map },
-          { id: 'route' as CitizenPage, label: 'Route', icon: Route },
-          { id: 'alerts' as CitizenPage, label: 'Alerts', icon: Bell, badge: unreadAlertCount },
+          { id: 'alerts' as CitizenPage, label: 'Alerts', icon: Bell },
+          { id: 'settings' as CitizenPage, label: 'Settings', icon: Settings },
         ].map((m) => {
           const Icon = m.icon;
           const isActive = activePage === m.id;
@@ -110,12 +108,7 @@ export const CitizenSidebar: React.FC = () => {
                 isActive ? 'text-orange-600 font-bold' : 'text-slate-500'
               }`}
             >
-              <div className="relative">
-                <Icon className="w-4 h-4" />
-                {Boolean(m.badge) && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500"></span>
-                )}
-              </div>
+              <Icon className="w-4 h-4" />
               <span className="mt-0.5">{m.label}</span>
             </button>
           );

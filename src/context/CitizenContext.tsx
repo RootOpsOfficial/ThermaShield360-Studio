@@ -12,6 +12,7 @@ import {
   ProtectionSummary,
   HealthcareFacility,
   CitizenAlert,
+  AlertHistoryItem,
   AdaptiveRecommendation,
   LongRangeEarlyWarningReport,
   CitizenMyRiskData,
@@ -63,6 +64,7 @@ interface CitizenContextType {
   protectionSummary: ProtectionSummary | null;
   healthcareFacilities: HealthcareFacility[];
   alerts: CitizenAlert[];
+  alertHistory: AlertHistoryItem[];
   adaptiveRecommendations: AdaptiveRecommendation[];
   longRangeReport: LongRangeEarlyWarningReport | null;
   unreadAlertCount: number;
@@ -78,6 +80,11 @@ interface CitizenContextType {
   // Drawer / modal states
   isNotificationOpen: boolean;
   setIsNotificationOpen: (open: boolean) => void;
+
+  // Cross-page in-app healthcare navigation
+  targetFacilityForDirections: HealthcareFacility | null;
+  setTargetFacilityForDirections: (facility: HealthcareFacility | null) => void;
+  navigateToHealthcareWithDirections: (facility: HealthcareFacility) => void;
 }
 
 const defaultWard: WardInfo = {
@@ -108,6 +115,12 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [activePage, setActivePage] = useState<CitizenPage>('home');
   const [unit, setUnit] = useState<'C' | 'F'>('C');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [targetFacilityForDirections, setTargetFacilityForDirections] = useState<HealthcareFacility | null>(null);
+
+  const navigateToHealthcareWithDirections = useCallback((facility: HealthcareFacility) => {
+    setTargetFacilityForDirections(facility);
+    setActivePage('healthcare');
+  }, []);
 
   const [profile, setProfile] = useState<CitizenProfile>({
     name: 'Citizen (Pune Resident)',
@@ -138,6 +151,7 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [protectionSummary, setProtectionSummary] = useState<ProtectionSummary | null>(null);
   const [healthcareFacilities, setHealthcareFacilities] = useState<HealthcareFacility[]>([]);
   const [alerts, setAlerts] = useState<CitizenAlert[]>([]);
+  const [alertHistory, setAlertHistory] = useState<AlertHistoryItem[]>([]);
   const [adaptiveRecommendations, setAdaptiveRecommendations] = useState<AdaptiveRecommendation[]>([]);
   const [longRangeReport, setLongRangeReport] = useState<LongRangeEarlyWarningReport | null>(null);
 
@@ -240,7 +254,17 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (ppRes.ok) setProtectionPoints(await ppRes.json());
       if (psRes.ok) setProtectionSummary(await psRes.json());
       if (hcRes.ok) setHealthcareFacilities(await hcRes.json());
-      if (alRes.ok) setAlerts(await alRes.json());
+      if (alRes.ok) {
+        const alData = await alRes.json();
+        if (Array.isArray(alData)) {
+          setAlerts(alData);
+        } else if (alData && Array.isArray(alData.alerts)) {
+          setAlerts(alData.alerts);
+          if (Array.isArray(alData.history)) {
+            setAlertHistory(alData.history);
+          }
+        }
+      }
       if (arRes.ok) {
         const arData = await arRes.json();
         setAdaptiveRecommendations(arData.recommendations || []);
@@ -404,6 +428,7 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
         protectionSummary,
         healthcareFacilities,
         alerts,
+        alertHistory,
         adaptiveRecommendations,
         longRangeReport,
         unreadAlertCount,
@@ -418,6 +443,10 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         isNotificationOpen,
         setIsNotificationOpen,
+
+        targetFacilityForDirections,
+        setTargetFacilityForDirections,
+        navigateToHealthcareWithDirections,
       }}
     >
       {children}

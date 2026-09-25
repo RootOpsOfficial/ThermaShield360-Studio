@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useCitizen } from '../context/CitizenContext.js';
+import { useWorkspace } from '../context/WorkspaceContext.js';
 import {
   ShieldAlert,
   MapPin,
@@ -10,13 +11,11 @@ import {
   Navigation,
   Check,
   AlertTriangle,
-  HeartPulse,
-  Sun,
-  HardHat,
-  GraduationCap,
+  Building,
 } from 'lucide-react';
 
 export const TopHeader: React.FC = () => {
+  const { workspace, setWorkspace } = useWorkspace();
   const {
     location,
     selectWard,
@@ -26,17 +25,15 @@ export const TopHeader: React.FC = () => {
     isRefreshing,
     unreadAlertCount,
     setIsNotificationOpen,
-    profile,
-    updateProfile,
     unit,
     setUnit,
   } = useCitizen();
 
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
-  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
 
   const locRef = useRef<HTMLDivElement>(null);
-  const profRef = useRef<HTMLDivElement>(null);
+  const roleRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -44,8 +41,8 @@ export const TopHeader: React.FC = () => {
       if (locRef.current && !locRef.current.contains(event.target as Node)) {
         setIsLocationDropdownOpen(false);
       }
-      if (profRef.current && !profRef.current.contains(event.target as Node)) {
-        setIsProfileDropdownOpen(false);
+      if (roleRef.current && !roleRef.current.contains(event.target as Node)) {
+        setIsRoleDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -65,12 +62,20 @@ export const TopHeader: React.FC = () => {
               <span className="font-bold tracking-tight text-slate-900 text-base sm:text-lg">
                 ThermaShield<span className="text-orange-600 font-extrabold">360</span>
               </span>
-              <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                CITIZEN
-              </span>
+              {workspace === 'municipal' ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-100 text-orange-800 border border-orange-200">
+                  MUNICIPAL
+                </span>
+              ) : (
+                <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                  CITIZEN
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-400 font-medium leading-none hidden sm:block">
-              Climate & Heat Risk Protection
+              {workspace === 'municipal'
+                ? 'Pune Municipal Corporation • Disaster Management Cell'
+                : 'Climate & Heat Risk Protection'}
             </p>
           </div>
         </div>
@@ -84,10 +89,10 @@ export const TopHeader: React.FC = () => {
             <MapPin className={`w-3.5 h-3.5 ${location.isGps ? 'text-blue-600' : 'text-orange-500'}`} />
             <div className="text-left flex flex-col">
               <span className="text-[10px] text-slate-400 font-normal leading-tight">
-                {location.isGps ? 'GPS Location' : 'Current Ward'}
+                {workspace === 'municipal' ? 'City Jurisdiction' : location.isGps ? 'GPS Location' : 'Current Ward'}
               </span>
               <span className="truncate max-w-[130px] sm:max-w-[190px] leading-tight font-medium">
-                {location.ward.name.split(':')[0]}
+                {workspace === 'municipal' ? 'Pune (6 Wards)' : location.ward.name.split(':')[0]}
               </span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -143,7 +148,7 @@ export const TopHeader: React.FC = () => {
           )}
         </div>
 
-        {/* Right Actions: Updated Time, Refresh, Notifications, Profile, Unit */}
+        {/* Right Actions: Updated Time, Refresh, Unit, Notifications, Role/Workspace Toggle */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Last Updated & Refresh */}
           <div className="hidden lg:flex items-center gap-2 text-xs text-slate-500 font-medium bg-slate-50 px-2.5 py-1 rounded-xl border border-black/5">
@@ -194,92 +199,111 @@ export const TopHeader: React.FC = () => {
             )}
           </button>
 
-          {/* Citizen Profile Toggle */}
-          <div className="relative" ref={profRef}>
+          {/* RIGHT SIDE CORNER: Only General Citizen and Municipal */}
+          <div className="relative" ref={roleRef}>
             <button
-              onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-              className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-800 text-xs font-semibold border border-black/5 transition-all"
+              onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+              className={`flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-xl border transition-all ${
+                workspace === 'municipal'
+                  ? 'bg-orange-50 hover:bg-orange-100/80 border-orange-200 text-orange-950 shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200/80 border-black/5 text-slate-800'
+              }`}
             >
-              <div className="w-6 h-6 rounded-lg bg-slate-800 text-white flex items-center justify-center text-xs font-bold">
-                {profile.profileLabel === 'Senior (65+)' ? (
-                  <HeartPulse className="w-3.5 h-3.5 text-rose-300" />
-                ) : profile.profileLabel === 'Outdoor Worker' ? (
-                  <HardHat className="w-3.5 h-3.5 text-amber-300" />
-                ) : profile.profileLabel === 'Child / Student' ? (
-                  <GraduationCap className="w-3.5 h-3.5 text-blue-300" />
+              <div
+                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
+                  workspace === 'municipal'
+                    ? 'bg-orange-600 text-white'
+                    : 'bg-slate-800 text-white'
+                }`}
+              >
+                {workspace === 'municipal' ? (
+                  <Building className="w-3.5 h-3.5" />
                 ) : (
                   <User className="w-3.5 h-3.5" />
                 )}
               </div>
-              <span className="hidden sm:inline font-medium text-slate-700 text-xs">
-                {profile.profileLabel}
+              <span className="font-semibold text-xs">
+                {workspace === 'municipal' ? 'Municipal' : 'General Citizen'}
               </span>
-              <ChevronDown className="w-3 h-3 text-slate-400 hidden sm:block" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
-            {/* Profile Dropdown */}
-            {isProfileDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-black/10 p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
-                <div className="pb-2 border-b border-slate-100">
-                  <p className="text-xs font-bold text-slate-900">Vulnerability Profile</p>
-                  <p className="text-[11px] text-slate-500">Calibrates thermal advice & risk scores</p>
+            {/* Dropdown Menu: ONLY General Citizen and Municipal */}
+            {isRoleDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-black/10 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="pb-2 mb-1 border-b border-slate-100 px-1">
+                  <p className="text-xs font-bold text-slate-900">Select Workspace</p>
+                  <p className="text-[11px] text-slate-500">Choose citizen view or municipal dashboard</p>
                 </div>
-                <div className="mt-2 space-y-1">
-                  {[
-                    {
-                      label: 'General Citizen',
-                      ageGroup: 'Adult (18-64)' as const,
-                      isOutdoor: false,
-                      health: false,
-                      icon: User,
-                    },
-                    {
-                      label: 'Senior Citizen (65+)',
-                      ageGroup: 'Senior (65+)' as const,
-                      isOutdoor: false,
-                      health: true,
-                      icon: HeartPulse,
-                    },
-                    {
-                      label: 'Outdoor Worker',
-                      ageGroup: 'Adult (18-64)' as const,
-                      isOutdoor: true,
-                      health: false,
-                      icon: HardHat,
-                    },
-                    {
-                      label: 'School Student',
-                      ageGroup: 'Child (< 12)' as const,
-                      isOutdoor: false,
-                      health: false,
-                      icon: GraduationCap,
-                    },
-                  ].map((p) => {
-                    const isSelected = profile.profileLabel.startsWith(p.label.split(' ')[0]);
-                    const IconComponent = p.icon;
-                    return (
-                      <button
-                        key={p.label}
-                        onClick={() => {
-                          updateProfile({
-                            ageGroup: p.ageGroup,
-                            isOutdoorWorker: p.isOutdoor,
-                            hasHealthCondition: p.health,
-                          });
-                          setIsProfileDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between p-2 rounded-xl text-xs text-left transition-colors ${
-                          isSelected ? 'bg-orange-50 text-orange-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
+
+                <div className="space-y-1">
+                  {/* Option 1: General Citizen */}
+                  <button
+                    onClick={() => {
+                      setWorkspace('citizen');
+                      setIsRoleDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs text-left transition-all ${
+                      workspace === 'citizen'
+                        ? 'bg-orange-50 text-orange-950 font-bold border border-orange-200/60'
+                        : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                          workspace === 'citizen'
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-slate-100 text-slate-600'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <IconComponent className="w-4 h-4 text-slate-500" />
-                          <span>{p.label}</span>
-                        </div>
-                        {isSelected && <Check className="w-4 h-4 text-orange-600" />}
-                      </button>
-                    );
-                  })}
+                        <User className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-xs">General Citizen</p>
+                        <p className="text-[10px] text-slate-400 font-normal">
+                          Personal heat risk, safe routes & cooling
+                        </p>
+                      </div>
+                    </div>
+                    {workspace === 'citizen' && (
+                      <Check className="w-4 h-4 text-orange-600 shrink-0" />
+                    )}
+                  </button>
+
+                  {/* Option 2: Municipal */}
+                  <button
+                    onClick={() => {
+                      setWorkspace('municipal');
+                      setIsRoleDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs text-left transition-all ${
+                      workspace === 'municipal'
+                        ? 'bg-orange-50 text-orange-950 font-bold border border-orange-200/60'
+                        : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                          workspace === 'municipal'
+                            ? 'bg-orange-600 text-white'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        <Building className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-xs">Municipal</p>
+                        <p className="text-[10px] text-slate-400 font-normal">
+                          Command center, ward GIS & action queue
+                        </p>
+                      </div>
+                    </div>
+                    {workspace === 'municipal' && (
+                      <Check className="w-4 h-4 text-orange-600 shrink-0" />
+                    )}
+                  </button>
                 </div>
               </div>
             )}

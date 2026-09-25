@@ -9,6 +9,15 @@ import { getAdaptiveRecommendations, getCitizenAlerts, getCitizenAlertHistory } 
 import { generateLongRangeEarlyWarning } from './src/server/longRangeEarlyWarning.js';
 import { fetchNearbyHealthcareFromOSM, getHealthcareFacilityById, calculateHealthcareRoute } from './src/server/healthcareService.js';
 import { RiskLevel, ProtectionSummary, WardInfo, CitizenMyRiskData, CitizenHeatRiskResponse, LocalRiskMapAreaFeature, LocalRiskMapResponse } from './src/server/types.js';
+import {
+  getMunicipalSummary,
+  getMunicipalWards,
+  getMunicipalActions,
+  updateMunicipalActionStatus,
+  getProtectionResources,
+  getMunicipalAlertsList,
+  addMunicipalAlert,
+} from './src/server/municipalData.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1368,6 +1377,94 @@ app.get('/api/alerts/history', (req: Request, res: Response) => {
   } catch (err) {
     console.error('Error in /api/alerts/history:', err);
     res.status(500).json({ error: 'Failed to retrieve alert history' });
+  }
+});
+
+// --- MUNICIPAL CORPORATION WORKSPACE API ---
+app.get('/api/municipal/summary', (_req: Request, res: Response) => {
+  try {
+    const summary = getMunicipalSummary();
+    res.json(summary);
+  } catch (err) {
+    console.error('Error in /api/municipal/summary:', err);
+    res.status(500).json({ error: 'Failed to fetch municipal summary' });
+  }
+});
+
+app.get('/api/municipal/wards', (_req: Request, res: Response) => {
+  try {
+    const wards = getMunicipalWards();
+    res.json(wards);
+  } catch (err) {
+    console.error('Error in /api/municipal/wards:', err);
+    res.status(500).json({ error: 'Failed to fetch municipal wards' });
+  }
+});
+
+app.get('/api/municipal/actions', (_req: Request, res: Response) => {
+  try {
+    const actions = getMunicipalActions();
+    res.json(actions);
+  } catch (err) {
+    console.error('Error in /api/municipal/actions:', err);
+    res.status(500).json({ error: 'Failed to fetch municipal actions' });
+  }
+});
+
+app.post('/api/municipal/actions/:id/status', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const updated = updateMunicipalActionStatus(id, status);
+    if (!updated) {
+      return res.status(404).json({ error: 'Action item not found' });
+    }
+    res.json(updated);
+  } catch (err) {
+    console.error('Error in /api/municipal/actions/:id/status:', err);
+    res.status(500).json({ error: 'Failed to update action status' });
+  }
+});
+
+app.get('/api/municipal/resources', (_req: Request, res: Response) => {
+  try {
+    const resources = getProtectionResources();
+    res.json(resources);
+  } catch (err) {
+    console.error('Error in /api/municipal/resources:', err);
+    res.status(500).json({ error: 'Failed to fetch protection resources' });
+  }
+});
+
+app.get('/api/municipal/alerts', (_req: Request, res: Response) => {
+  try {
+    const alerts = getMunicipalAlertsList();
+    res.json(alerts);
+  } catch (err) {
+    console.error('Error in /api/municipal/alerts:', err);
+    res.status(500).json({ error: 'Failed to fetch municipal alerts' });
+  }
+});
+
+app.post('/api/municipal/alerts', (req: Request, res: Response) => {
+  try {
+    const { what, where, when, why, action, severity } = req.body;
+    if (!what || !where) {
+      return res.status(400).json({ error: 'Missing required alert fields' });
+    }
+    const created = addMunicipalAlert({
+      what,
+      where,
+      when: when || 'Immediate',
+      why: why || 'High heat risk and protection deficit',
+      action: action || 'Review deployment',
+      severity: severity || 'High',
+      status: 'Active',
+    });
+    res.status(201).json(created);
+  } catch (err) {
+    console.error('Error in /api/municipal/alerts:', err);
+    res.status(500).json({ error: 'Failed to broadcast municipal alert' });
   }
 });
 

@@ -3,27 +3,29 @@ import { useMunicipal } from '../../context/MunicipalContext.js';
 import { MunicipalAlertItem } from '../../types/municipal.js';
 import {
   Bell,
-  AlertTriangle,
-  Flame,
   Radio,
-  Send,
-  CheckCircle2,
   Clock,
   MapPin,
   Shield,
   Plus,
   X,
+  AlertTriangle,
+  Flame,
+  Send,
 } from 'lucide-react';
 
 export const MunicipalAlertsPage: React.FC = () => {
-  const { alerts, broadcastAlert, wards, setSelectedWard, setActiveMunicipalPage } = useMunicipal();
+  const { alerts, broadcastAlert, wards } = useMunicipal();
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
 
-  // New alert form
+  // New alert form state
   const [newWard, setNewWard] = useState('Ward 21 (Kasba Peth)');
-  const [newSeverity, setNewSeverity] = useState<'Critical' | 'High' | 'Developing'>('High');
+  const [newSeverity, setNewSeverity] = useState<MunicipalAlertItem['severity']>('High');
   const [newWhat, setNewWhat] = useState('');
-  const [newAction, setNewAction] = useState('');
+  const [newWhere, setNewWhere] = useState('Ward 21 (Kasba Peth)');
+  const [newWhen, setNewWhen] = useState('12:00 PM – 4:30 PM');
+  const [newWhy, setNewWhy] = useState('Extreme wet-bulb temperature exceeding 31.5°C with severe protection deficit.');
+  const [newAction, setNewAction] = useState('Deploy mobile water units and open air-conditioned municipal shelters.');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   const handleBroadcast = async (e: React.FormEvent) => {
@@ -33,17 +35,33 @@ export const MunicipalAlertsPage: React.FC = () => {
     setIsBroadcasting(true);
     await broadcastAlert({
       what: newWhat,
-      where: newWard,
-      when: 'Immediate • Valid for next 6 hours',
-      why: 'IMD heat index threshold surpassed with vulnerable population exposure.',
-      action: newAction || 'Deploy shade units and issue civic hydrate notifications.',
+      where: newWhere || newWard,
+      when: newWhen || 'Immediate',
+      why: newWhy,
+      action: newAction,
       severity: newSeverity,
       status: 'Active',
     });
     setIsBroadcasting(false);
     setIsBroadcastModalOpen(false);
     setNewWhat('');
-    setNewAction('');
+  };
+
+  const severityBadgeClass = (severity: MunicipalAlertItem['severity']) => {
+    switch (severity) {
+      case 'Critical':
+        return 'bg-rose-100 text-rose-800 border-rose-300';
+      case 'Harmful + Confidence':
+        return 'bg-purple-100 text-purple-800 border-purple-300';
+      case 'High':
+        return 'bg-orange-100 text-orange-800 border-orange-300';
+      case 'Developing':
+        return 'bg-amber-100 text-amber-800 border-amber-300';
+      case 'Normal':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      default:
+        return 'bg-slate-100 text-slate-800 border-slate-300';
+    }
   };
 
   return (
@@ -55,10 +73,10 @@ export const MunicipalAlertsPage: React.FC = () => {
             EMERGENCY EARLY WARNING SYSTEM
           </span>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
-            Municipal Alerts & Broadcast Center
+            Municipal Alerts
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 font-medium">
-            Active heatwave warnings, trigger criteria, and multi-channel public dissemination
+            Operational heatwave warnings, trigger criteria, and public dissemination directives
           </p>
         </div>
 
@@ -67,11 +85,11 @@ export const MunicipalAlertsPage: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 transition-all shrink-0 self-start sm:self-center"
         >
           <Radio className="w-4 h-4 animate-pulse" />
-          <span>Issue Broadcast Alert</span>
+          <span>Issue Municipal Alert</span>
         </button>
       </div>
 
-      {/* Broadcast Channels Status Bar */}
+      {/* Dissemination Channels Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -80,11 +98,11 @@ export const MunicipalAlertsPage: React.FC = () => {
             </div>
             <div>
               <p className="text-xs font-bold text-slate-900">Citizen App Channel</p>
-              <p className="text-[10px] text-slate-400">Push notifications & banner</p>
+              <p className="text-[10px] text-slate-400">Push notifications & safety banners</p>
             </div>
           </div>
           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-            Active Sync
+            LIVE SYNC
           </span>
         </div>
 
@@ -94,12 +112,12 @@ export const MunicipalAlertsPage: React.FC = () => {
               <Radio className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900">Field Squad Dispatch</p>
-              <p className="text-[10px] text-slate-400">Ward officers & mobile tankers</p>
+              <p className="text-xs font-bold text-slate-900">Field Squad Dispatches</p>
+              <p className="text-[10px] text-slate-400">Mobile water tankers & misting units</p>
             </div>
           </div>
           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-            Linked
+            CONNECTED
           </span>
         </div>
 
@@ -110,209 +128,209 @@ export const MunicipalAlertsPage: React.FC = () => {
             </div>
             <div>
               <p className="text-xs font-bold text-slate-900">Emergency Services (108)</p>
-              <p className="text-[10px] text-slate-400">Ambulance triage escalation</p>
+              <p className="text-[10px] text-slate-400">Hospital triage escalation</p>
             </div>
           </div>
           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-            Standby
+            STANDBY
           </span>
         </div>
       </div>
 
-      {/* Active Alerts List */}
+      {/* ACTIVE ALERTS LIST */}
       <div className="space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Currently Dispatched Heatwave Alerts ({alerts.length})
+          Operational Heatwave Alerts ({alerts.length})
         </h3>
 
-        <div className="space-y-3">
-          {alerts.map((item) => {
-            const isCritical = item.severity === 'Critical';
-            const isHigh = item.severity === 'High';
+        <div className="space-y-4">
+          {alerts.map((item) => (
+            <div
+              key={item.id}
+              className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-3"
+            >
+              {/* Header: Severity & Status */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${severityBadgeClass(
+                      item.severity
+                    )}`}
+                  >
+                    {item.severity}
+                  </span>
+                  <span className="text-xs font-bold text-slate-800">
+                    {item.where}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold text-slate-400">
+                  {item.status}
+                </span>
+              </div>
 
-            return (
-              <div
-                key={item.id}
-                className={`bg-white rounded-2xl p-5 border shadow-xs transition-all flex flex-col md:flex-row md:items-start justify-between gap-4 ${
-                  isCritical
-                    ? 'border-red-200 bg-gradient-to-r from-red-50/40 to-white'
-                    : isHigh
-                    ? 'border-orange-200 bg-gradient-to-r from-orange-50/40 to-white'
-                    : 'border-slate-200'
-                }`}
-              >
-                <div className="space-y-2 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                        isCritical
-                          ? 'bg-red-600 text-white'
-                          : isHigh
-                          ? 'bg-orange-600 text-white'
-                          : 'bg-amber-500 text-white'
-                      }`}
-                    >
-                      {item.severity} ALERT
-                    </span>
-                    <span className="text-xs font-bold text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200 flex items-center gap-1">
-                      <MapPin className="w-3 h-3 text-orange-500" />
-                      {item.where}
-                    </span>
-                    <span className="text-[11px] text-slate-500 flex items-center gap-1 font-medium">
-                      <Clock className="w-3 h-3" />
-                      {item.when}
-                    </span>
-                  </div>
-
-                  <h4 className="text-base font-bold text-slate-900 leading-snug">
+              {/* WHAT, WHERE, WHEN, WHY, RECOMMENDED ACTION */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    WHAT
+                  </span>
+                  <p className="font-extrabold text-slate-900 mt-0.5">
                     {item.what}
-                  </h4>
+                  </p>
+                </div>
 
-                  <p className="text-xs text-slate-600 bg-white/80 p-2.5 rounded-xl border border-black/5 leading-relaxed">
-                    <span className="font-bold text-slate-700">Trigger Threshold: </span>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    WHERE
+                  </span>
+                  <p className="font-extrabold text-slate-900 mt-0.5">
+                    {item.where}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    WHEN
+                  </span>
+                  <p className="font-extrabold text-slate-900 mt-0.5">
+                    {item.when}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/60">
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                    WHY
+                  </span>
+                  <p className="font-semibold text-amber-950 mt-0.5">
                     {item.why}
                   </p>
-
-                  <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/70 text-xs">
-                    <span className="text-[10px] font-bold text-blue-800 uppercase block">
-                      Civic Response Mandate:
-                    </span>
-                    <span className="font-semibold text-slate-800 mt-0.5 block">
-                      {item.action}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Right Quick Controls */}
-                <div className="flex md:flex-col gap-2 shrink-0 self-end md:self-center">
-                  <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1 text-center justify-center">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Broadcasted
-                  </span>
-                  <button
-                    onClick={() => {
-                      const matched = wards.find((w) => item.where.includes(w.name.split(':')[0]));
-                      if (matched) setSelectedWard(matched);
-                      setActiveMunicipalPage('ward-risk-map');
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
-                  >
-                    View Ward Map
-                  </button>
                 </div>
               </div>
-            );
-          })}
+
+              {/* RECOMMENDED ACTION */}
+              <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200/60 text-xs">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 block">
+                  RECOMMENDED ACTION
+                </span>
+                <p className="font-bold text-slate-900 mt-0.5">
+                  {item.action}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Broadcast Modal Dialog */}
+      {/* Broadcast Alert Modal Dialog */}
       {isBroadcastModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-black/10 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-black/10 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Radio className="w-5 h-5 text-rose-600" />
-                <h3 className="text-base font-bold text-slate-900">
-                  Issue Municipal Broadcast Alert
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Broadcast Municipal Alert
                 </h3>
               </div>
               <button
                 onClick={() => setIsBroadcastModalOpen(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700"
+                className="p-1 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleBroadcast} className="p-5 space-y-4">
+            <form onSubmit={handleBroadcast} className="space-y-3.5 text-xs">
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Target Municipal Ward
-                </label>
+                <label className="font-bold text-slate-700 block mb-1">Severity / Risk Level</label>
                 <select
-                  value={newWard}
-                  onChange={(e) => setNewWard(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none"
+                  value={newSeverity}
+                  onChange={(e) => setNewSeverity(e.target.value as any)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800"
                 >
-                  {wards.map((w) => (
-                    <option key={w.id} value={w.name}>
-                      {w.name} ({w.riskLevel} Risk)
-                    </option>
-                  ))}
-                  <option value="All Pune Municipal Corporation Wards (Citywide)">
-                    All Pune Municipal Corporation Wards (Citywide)
-                  </option>
+                  <option value="Critical">Critical</option>
+                  <option value="Harmful + Confidence">Harmful + Confidence</option>
+                  <option value="High">High</option>
+                  <option value="Developing">Developing</option>
+                  <option value="Normal">Normal</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Alert Severity Level
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['Developing', 'High', 'Critical'] as const).map((sev) => (
-                    <button
-                      type="button"
-                      key={sev}
-                      onClick={() => setNewSeverity(sev)}
-                      className={`py-2 rounded-xl text-xs font-bold transition-all ${
-                        newSeverity === sev
-                          ? sev === 'Critical'
-                            ? 'bg-rose-600 text-white'
-                            : sev === 'High'
-                            ? 'bg-orange-600 text-white'
-                            : 'bg-amber-500 text-white'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {sev}
-                    </button>
-                  ))}
+                <label className="font-bold text-slate-700 block mb-1">WHAT (Alert Directive)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Severe heatwave alert with WBGT > 32°C"
+                  value={newWhat}
+                  onChange={(e) => setNewWhat(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">WHERE (Ward/Sector)</label>
+                  <select
+                    value={newWhere}
+                    onChange={(e) => setNewWhere(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800"
+                  >
+                    {wards.map((w) => (
+                      <option key={w.id} value={w.name}>
+                        {w.name}
+                      </option>
+                    ))}
+                    <option value="Citywide Pune Corporation">Citywide Pune Corporation</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">WHEN (Operational Window)</label>
+                  <input
+                    type="text"
+                    value={newWhen}
+                    onChange={(e) => setNewWhen(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 focus:outline-none focus:border-orange-500"
+                  />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Alert Advisory Statement
-                </label>
+                <label className="font-bold text-slate-700 block mb-1">WHY (Underlying Trigger)</label>
                 <textarea
-                  rows={3}
-                  required
-                  placeholder="e.g. Extreme afternoon heat stress expected with WBGT exceeding 31°C. Outdoor activities must be curtailed."
-                  value={newWhat}
-                  onChange={(e) => setNewWhat(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-900 focus:outline-none"
+                  rows={2}
+                  value={newWhy}
+                  onChange={(e) => setNewWhy(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 focus:outline-none focus:border-orange-500"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Immediate Field Directive
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Open community AC shelters until 8:30 PM & refill water dispensers."
+                <label className="font-bold text-slate-700 block mb-1">RECOMMENDED ACTION</label>
+                <textarea
+                  rows={2}
                   value={newAction}
                   onChange={(e) => setNewAction(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 focus:outline-none focus:border-orange-500"
                 />
               </div>
 
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsBroadcastModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isBroadcasting}
-                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shadow-rose-600/20 flex items-center gap-1.5"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isBroadcasting ? 'Broadcasting...' : 'Dispatch Alert'}</span>
+                  <span>{isBroadcasting ? 'Broadcasting...' : 'Broadcast Now'}</span>
                 </button>
               </div>
             </form>

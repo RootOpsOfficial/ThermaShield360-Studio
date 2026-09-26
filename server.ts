@@ -18,6 +18,15 @@ import {
   getMunicipalAlertsList,
   addMunicipalAlert,
 } from './src/server/municipalData.js';
+import {
+  getHealthcareSummary,
+  getFacilityProfile,
+  updateFacilityProfile,
+  toggleDemoMode,
+  toggleChecklistItem,
+  getHealthcareSettings,
+  updateHealthcareSettings,
+} from './src/server/healthcareWorkspaceService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1377,6 +1386,85 @@ app.get('/api/alerts/history', (req: Request, res: Response) => {
   } catch (err) {
     console.error('Error in /api/alerts/history:', err);
     res.status(500).json({ error: 'Failed to retrieve alert history' });
+  }
+});
+
+// --- HEALTHCARE WORKSPACE API ---
+app.get('/api/healthcare/workspace/summary', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const summary = await getHealthcareSummary(lat, lng);
+    res.json(summary);
+  } catch (err) {
+    console.error('Error in /api/healthcare/workspace/summary:', err);
+    res.status(500).json({ error: 'Failed to fetch healthcare workspace summary' });
+  }
+});
+
+app.get('/api/healthcare/workspace/profile', (_req: Request, res: Response) => {
+  try {
+    const profile = getFacilityProfile();
+    res.json(profile);
+  } catch (err) {
+    console.error('Error in /api/healthcare/workspace/profile:', err);
+    res.status(500).json({ error: 'Failed to fetch facility profile' });
+  }
+});
+
+app.post('/api/healthcare/workspace/profile', (req: Request, res: Response) => {
+  try {
+    const { updates, updatedBy } = req.body || {};
+    const updated = updateFacilityProfile(updates || {}, updatedBy);
+    res.json(updated);
+  } catch (err) {
+    console.error('Error in /api/healthcare/workspace/profile:', err);
+    res.status(500).json({ error: 'Failed to update facility profile' });
+  }
+});
+
+app.post('/api/healthcare/workspace/demo-toggle', (req: Request, res: Response) => {
+  try {
+    const { enableDemo } = req.body || {};
+    const updated = toggleDemoMode(Boolean(enableDemo));
+    res.json(updated);
+  } catch (err) {
+    console.error('Error in /api/healthcare/workspace/demo-toggle:', err);
+    res.status(500).json({ error: 'Failed to toggle demo mode' });
+  }
+});
+
+app.post('/api/healthcare/workspace/readiness/checklist', (req: Request, res: Response) => {
+  try {
+    const { id, isReady } = req.body || {};
+    if (!id || typeof isReady !== 'boolean') {
+      return res.status(400).json({ error: 'Valid item id and boolean isReady required' });
+    }
+    const updated = toggleChecklistItem(id, isReady);
+    res.json(updated);
+  } catch (err) {
+    console.error('Error in /api/healthcare/workspace/readiness/checklist:', err);
+    res.status(500).json({ error: 'Failed to update readiness checklist' });
+  }
+});
+
+app.get('/api/healthcare/workspace/settings', (_req: Request, res: Response) => {
+  try {
+    const settings = getHealthcareSettings();
+    res.json(settings);
+  } catch (err) {
+    console.error('Error in /api/healthcare/workspace/settings:', err);
+    res.status(500).json({ error: 'Failed to fetch healthcare settings' });
+  }
+});
+
+app.post('/api/healthcare/workspace/settings', (req: Request, res: Response) => {
+  try {
+    const updates = req.body || {};
+    const updated = updateHealthcareSettings(updates);
+    res.json(updated);
+  } catch (err) {
+    console.error('Error in /api/healthcare/workspace/settings:', err);
+    res.status(500).json({ error: 'Failed to update healthcare settings' });
   }
 });
 

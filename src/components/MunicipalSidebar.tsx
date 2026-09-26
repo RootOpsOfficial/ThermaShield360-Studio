@@ -9,7 +9,6 @@ import {
   Bell,
   Settings,
   Flame,
-  ShieldCheck,
 } from 'lucide-react';
 
 interface SidebarItem {
@@ -70,13 +69,13 @@ export const MunicipalSidebar: React.FC = () => {
     {
       id: 'settings',
       label: 'Settings',
-      category: 'SYSTEM',
+      category: 'SETTINGS',
       icon: Settings,
     },
   ];
 
-  // Group items by category
-  const categories = ['HOME', 'RISK', 'PROTECTION', 'ACTION', 'ALERTS', 'SYSTEM'];
+  // Exactly the 6 categories requested in Phase 5
+  const categories = ['HOME', 'RISK', 'PROTECTION', 'ACTION', 'ALERTS', 'SETTINGS'];
 
   return (
     <>
@@ -87,7 +86,7 @@ export const MunicipalSidebar: React.FC = () => {
             <div className="text-[10px] font-extrabold uppercase tracking-wider text-orange-600">
               MUNICIPAL CORPORATION
             </div>
-            <p className="text-[12px] font-bold text-slate-800">Disaster Cell</p>
+            <p className="text-[12px] font-bold text-slate-800">Disaster Management Cell</p>
           </div>
           <span className="flex h-2 w-2 relative">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -141,14 +140,14 @@ export const MunicipalSidebar: React.FC = () => {
           })}
         </nav>
 
-        {/* Municipal Quick Status Pill */}
+        {/* Municipal Decision Support Quick Status Pill */}
         <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] bg-slate-50 rounded-xl p-2.5 border border-black/5">
           <div className="flex items-center gap-1.5 text-slate-700 font-bold mb-1">
             <Flame className="w-3.5 h-3.5 text-orange-600" />
-            <span>Heatwave Protocol Level 2</span>
+            <span>Heat Action Plan • Stage 2</span>
           </div>
           <p className="text-[10px] text-slate-500 leading-snug">
-            Yellow-to-Orange Stage active. Mandatory water stations and misting deployed.
+            Operational focus: 3 high-risk wards requiring priority cooling & hydration deployment.
           </p>
         </div>
       </aside>

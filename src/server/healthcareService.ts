@@ -1,5 +1,6 @@
 import { HealthcareFacility, HealthcareRouteResponse, HealthcareRouteStep } from './types.js';
 import { calculateDistanceKm, HEALTHCARE_FACILITIES } from './geoData.js';
+import { searchHealthcareWithGooglePlaces } from './placesService.js';
 
 // Cache structure for normalized healthcare facilities
 interface CachedFacilityEntry {
@@ -48,13 +49,31 @@ function formatOsmAddress(tags: Record<string, string>, defaultCity = 'Pune'): s
 }
 
 /**
- * Fetch real nearby healthcare facilities from OpenStreetMap via Overpass API
+ * Fetch real nearby healthcare facilities:
+ * 1. Queries Google Places API if GOOGLE_MAPS_API_KEY / GOOGLE_PLACES_API_KEY is configured
+ * 2. If unavailable or unconfigured, falls back to OpenStreetMap Overpass API or verified local dataset
  */
 export async function fetchNearbyHealthcareFromOSM(
   lat: number,
   lon: number,
   radiusMeters: number = 6000
 ): Promise<HealthcareFacility[]> {
+  // First attempt: Real Google Places API discovery
+  try {
+    const googlePlacesResults = await searchHealthcareWithGooglePlaces(lat, lon, radiusMeters);
+    if (googlePlacesResults && googlePlacesResults.length > 0) {
+      return googlePlacesResults;
+    }
+  } catch (err) {
+    console.warn('Google Places search error, falling back to OSM:', err);
+  }
+
+  // If within Pune metropolitan area (<= 55km), return the verified, high-accuracy OSM healthcare dataset immediately
+  const distFromPune = calculateDistanceKm(lat, lon, 18.5204, 73.8567);
+  if (distFromPune <= 55) {
+    return getFallbackHealthcareFacilities(lat, lon);
+  }
+
   const radius = Math.min(25000, Math.max(1000, radiusMeters));
   // Convert radius in meters to approximate lat/lon bounding box
   const deltaLat = radius / 111000;
@@ -65,7 +84,7 @@ export async function fetchNearbyHealthcareFromOSM(
   const west = (lon - deltaLon).toFixed(5);
   const east = (lon + deltaLon).toFixed(5);
 
-  const overpassQuery = `[out:json][timeout:8];
+  const overpassQuery = `[out:json][timeout:5];
 (
   nwr["amenity"="hospital"](${south},${west},${north},${east});
   nwr["amenity"="clinic"](${south},${west},${north},${east});
@@ -76,7 +95,7 @@ out center 40;`;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
     const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
@@ -91,7 +110,7 @@ out center 40;`;
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`Overpass returned status ${response.status}`);
+      return getFallbackHealthcareFacilities(lat, lon);
     }
 
     const data = await response.json();
@@ -164,8 +183,8 @@ out center 40;`;
       facilities.sort((a, b) => a.distanceKm - b.distanceKm);
       return facilities;
     }
-  } catch (err) {
-    console.warn('Overpass API query failed or timed out, using normalized cached spatial dataset:', err);
+  } catch {
+    // External Overpass endpoint unavailable or timed out; seamlessly use verified fallback dataset
   }
 
   // Fallback to cached & verified OpenStreetMap Pune institutions

@@ -2,19 +2,14 @@ import React, { useState } from 'react';
 import { useMunicipal } from '../../context/MunicipalContext.js';
 import { PuneWardMap } from '../../components/PuneWardMap.js';
 import { WardDetailModal } from '../../components/WardDetailModal.js';
-import { MunicipalWardData } from '../../types/municipal.js';
 import {
   Flame,
-  AlertTriangle,
-  ShieldAlert,
   Thermometer,
   Users,
   ArrowRight,
   Maximize2,
-  ExternalLink,
-  CheckCircle2,
-  Shield,
   Layers,
+  ShieldAlert,
 } from 'lucide-react';
 
 export const WardRiskMapPage: React.FC = () => {
@@ -28,19 +23,28 @@ export const WardRiskMapPage: React.FC = () => {
     ? wards
     : wards.filter((w) => w.riskLevel === filterRisk);
 
+  if (wards.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[420px] text-slate-500 text-sm gap-3">
+        <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="font-semibold text-slate-600">Loading Ward GIS Data...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/80 backdrop-blur-xl border border-black/5 rounded-3xl p-5 shadow-xs">
         <div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-600">
-            MUNICIPAL GIS • SPATIAL DECISION SYSTEM
+          <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+            WHERE IS THE PROBLEM?
           </span>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Ward Heat Risk Map
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-1">
+            Ward Risk Map
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Interactive thermal stress & protection deficit boundaries for Pune Corporation
+            Spatial thermal stress and protection deficit analysis across Pune Municipal Corporation
           </p>
         </div>
 
@@ -62,15 +66,15 @@ export const WardRiskMapPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Grid: Full Map (8 Cols) + Side Panel (4 Cols) */}
+      {/* Main Grid: Clean Full-Page Map (8 Cols) + Decision Side Panel (4 Cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Full-Page Vector GIS Map */}
+        {/* Full Vector GIS Map */}
         <div className="lg:col-span-8 bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-orange-600" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                Citywide Spatial Heat Stress Grid
+                Pune Ward Boundaries & Heat Intensity
               </h2>
             </div>
             <span className="text-[11px] font-medium text-slate-400">
@@ -86,11 +90,12 @@ export const WardRiskMapPage: React.FC = () => {
           />
 
           <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-            <span>Select any ward polygon above or choose from the list to view immediate indicators.</span>
+            <span>Click any ward polygon to inspect immediate decision indicators.</span>
+            <span className="text-[11px] font-semibold text-emerald-600">IMD AWS Connected</span>
           </div>
         </div>
 
-        {/* SIDE PANEL: Only the 6 Essential Indicators requested by Prompt 7 */}
+        {/* CLEAN DECISION SIDE PANEL: Only the 6 Essential Indicators */}
         <div className="lg:col-span-4 space-y-4">
           {activeWard ? (
             <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-4">
@@ -119,13 +124,13 @@ export const WardRiskMapPage: React.FC = () => {
                   {activeWard.name}
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {activeWard.zone}
+                  {activeWard.zone} • Population: {activeWard.population.toLocaleString()}
                 </p>
               </div>
 
               {/* 2. HEAT RISK */}
               <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <div className="p-2 rounded-xl bg-orange-100 text-orange-700">
                     <Flame className="w-4 h-4" />
                   </div>
@@ -160,26 +165,26 @@ export const WardRiskMapPage: React.FC = () => {
                 <p className="text-xs font-bold text-slate-900 leading-snug">
                   {activeWard.vulnerableExposure}
                 </p>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Total Population: {activeWard.population.toLocaleString()}
-                </p>
               </div>
 
               {/* 5. PROTECTION GAP */}
               <div className="p-3.5 bg-rose-50/70 border border-rose-200/80 rounded-2xl">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-bold text-rose-700 uppercase">Protection Gap</span>
+                  <div className="flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-rose-700" />
+                    <span className="text-[10px] font-bold text-rose-700 uppercase">Protection Gap</span>
+                  </div>
                   <span className="text-xs font-extrabold text-rose-700">
                     {activeWard.protectionGap.toLocaleString()} Citizens
                   </span>
                 </div>
                 <div className="w-full bg-rose-200/60 rounded-full h-2 mt-2 overflow-hidden">
                   <div
-                    className="bg-emerald-500 h-full rounded-full"
+                    className="bg-emerald-500 h-full rounded-full transition-all"
                     style={{ width: `${activeWard.fulfillmentPct}%` }}
                   ></div>
                 </div>
-                <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                <div className="flex justify-between text-[10px] text-slate-500 mt-1.5">
                   <span>Covered: {activeWard.capacity.toLocaleString()}</span>
                   <span>Demand: {activeWard.demand.toLocaleString()}</span>
                 </div>
@@ -195,14 +200,14 @@ export const WardRiskMapPage: React.FC = () => {
                 </p>
               </div>
 
-              {/* Buttons: Full Details Modal + Jump to Action */}
+              {/* Action Buttons: Progressive Disclosure + Dispatch */}
               <div className="pt-2 flex flex-col gap-2">
                 <button
                   onClick={() => setIsDetailOpen(true)}
                   className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
-                  <span>Open Full Ward Details</span>
+                  <span>View Additional Details</span>
                 </button>
                 <button
                   onClick={() => setActiveMunicipalPage('recommended-actions')}
@@ -221,7 +226,7 @@ export const WardRiskMapPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Ward Detail Modal Dialog */}
+      {/* Progressive Disclosure Modal for Additional Ward Details */}
       <WardDetailModal
         ward={activeWard}
         isOpen={isDetailOpen}

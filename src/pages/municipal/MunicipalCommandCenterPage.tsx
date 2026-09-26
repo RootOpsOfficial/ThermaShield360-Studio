@@ -1,208 +1,268 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useMunicipal } from '../../context/MunicipalContext.js';
 import { PuneWardMap } from '../../components/PuneWardMap.js';
+import { MunicipalWardData } from '../../types/municipal.js';
 import {
   Flame,
   AlertTriangle,
   ShieldAlert,
   ListChecks,
   ArrowRight,
-  TrendingUp,
-  ShieldCheck,
   Bell,
-  Sparkles,
-  MapPin,
   Calendar,
-  Building,
+  Layers,
+  MapPin,
+  Clock,
+  CheckCircle2,
+  RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 
 export const MunicipalCommandCenterPage: React.FC = () => {
-  const { summary, wards, setSelectedWard, setActiveMunicipalPage } = useMunicipal();
+  const {
+    summary,
+    wards,
+    selectedWard,
+    setSelectedWard,
+    setActiveMunicipalPage,
+    isRefreshing,
+    refreshMunicipalData,
+  } = useMunicipal();
 
+  const [activePreviewWard, setActivePreviewWard] = useState<MunicipalWardData | null>(null);
+
+  // Loading state
   if (!summary) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex items-center gap-3 text-slate-500 text-sm">
-          <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          <span>Loading Municipal Command Center data...</span>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-[460px] text-slate-500 text-sm gap-3">
+        <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="font-bold text-slate-700 text-base">Connecting to Municipal Command Center Feed...</p>
+        <p className="text-xs text-slate-400">Loading Pune Municipal Corporation heat risk telemetry</p>
       </div>
     );
   }
 
-  const priorityWard = summary.priorityWard;
+  const priorityWard = summary.priorityWard || (wards.length > 0 ? wards[0] : null);
+  const displayedWard = activePreviewWard || priorityWard;
 
-  const handleSelectWard = (ward: typeof priorityWard) => {
-    setSelectedWard(ward);
+  const handleSelectWardFromMap = (ward: MunicipalWardData) => {
+    setActivePreviewWard(ward);
+  };
+
+  const handleViewWardInGIS = (ward: MunicipalWardData | null) => {
+    if (ward) setSelectedWard(ward);
     setActiveMunicipalPage('ward-risk-map');
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Top Header Section */}
-      <div className="bg-white/80 backdrop-blur-xl border border-black/5 rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* ============================================================ */}
+      {/* A — HEADER                                                   */}
+      {/* ============================================================ */}
+      <div className="bg-white/80 backdrop-blur-xl border border-black/5 rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-200">
-              MUNICIPAL CORPORATION WORKSPACE
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+              DISASTER MANAGEMENT CELL
             </span>
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              {summary.dataStatus}
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+              MODELLED / GIS PREVIEW
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium hidden md:inline">
+              IMD Synoptic Calibrated
             </span>
           </div>
+
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             Municipal Command Center
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5 flex flex-wrap items-center gap-2">
-            <span>{summary.cityName}</span>
-            <span>•</span>
-            <span>{summary.department}</span>
-            <span>•</span>
-            <span className="text-slate-400">{summary.dateTime}</span>
+          <p className="text-xs sm:text-sm font-semibold text-slate-500 mt-0.5">
+            City Heat Risk • Protection • Response
           </p>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-medium mt-1">
+            <span className="text-slate-600 font-semibold">{summary.cityName || 'Pune Municipal Corporation'}</span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3 text-slate-400" />
+              {summary.dateTime || 'Live Session'}
+            </span>
+          </div>
         </div>
 
-        {/* Quick Shift / Action Pill */}
-        <div className="flex items-center gap-3">
+        {/* Quick Top Actions: Refresh + Jump to Full GIS */}
+        <div className="flex items-center gap-2 self-start sm:self-center">
+          <button
+            onClick={() => refreshMunicipalData()}
+            disabled={isRefreshing}
+            className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all border border-black/5"
+            title="Refresh Municipal Data"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-orange-500' : ''}`} />
+          </button>
+
           <button
             onClick={() => setActiveMunicipalPage('ward-risk-map')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#1D1D1F] hover:bg-black text-white text-xs font-semibold shadow-sm transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#1D1D1F] hover:bg-black text-white text-xs font-bold shadow-xs transition-all"
           >
-            <span>Full Ward GIS</span>
+            <Layers className="w-3.5 h-3.5 text-orange-400" />
+            <span>View Ward Risk Map</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* 4 Important Summary KPI Cards */}
+      {/* ============================================================ */}
+      {/* B — FOUR KEY SUMMARY CARDS ONLY                              */}
+      {/* ============================================================ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: CURRENT HEAT RISK */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-            <span className="uppercase tracking-wider">Current Heat Risk</span>
-            <span className="p-1.5 rounded-xl bg-orange-50 text-orange-600">
+        {/* CARD 1: CURRENT HEAT RISK */}
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider">
+            <span>Current Heat Risk</span>
+            <span className="p-2 rounded-xl bg-orange-50 text-orange-600">
               <Flame className="w-4 h-4" />
             </span>
           </div>
+
           <div className="my-3">
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-black text-orange-600 tracking-tight">
-                {summary.currentHeatRisk}
+                {summary.currentHeatRisk || 'Warning'}
               </span>
-              <span className="text-xs font-bold text-slate-400">Score {summary.currentRiskScore}/100</span>
+              <span className="text-xs font-bold text-slate-400">
+                ({summary.currentRiskScore || 78}/100)
+              </span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1">
-              Elevated thermal strain across 3 central urban corridors.
+            <p className="text-[11px] text-slate-500 font-medium mt-1 leading-snug">
+              Elevated thermal strain across central urban and industrial corridors.
             </p>
           </div>
+
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">City Thermal Status</span>
-            <span className="font-bold text-orange-600">Warning Active</span>
+            <span className="text-slate-400">Status</span>
+            <span className="font-bold text-orange-600 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+              Warning Active
+            </span>
           </div>
         </div>
 
-        {/* Card 2: HIGH-RISK WARDS */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-            <span className="uppercase tracking-wider">High-Risk Wards</span>
-            <span className="p-1.5 rounded-xl bg-rose-50 text-rose-600">
+        {/* CARD 2: HIGH-RISK WARDS */}
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider">
+            <span>High-Risk Wards</span>
+            <span className="p-2 rounded-xl bg-rose-50 text-rose-600">
               <AlertTriangle className="w-4 h-4" />
             </span>
           </div>
+
           <div className="my-3">
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-1.5">
               <span className="text-3xl font-black text-rose-600 tracking-tight">
-                {summary.highRiskWardsCount} <span className="text-lg font-bold text-slate-400">/ {summary.totalWardsCount}</span>
+                {summary.highRiskWardsCount || 3}
+              </span>
+              <span className="text-base font-bold text-slate-400">
+                / {summary.totalWardsCount || 6} Monitored Wards
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1">
-              Kasba Peth, Hadapsar, and Swargate exceed danger thresholds.
+            <p className="text-[11px] text-slate-500 font-medium mt-1 leading-snug">
+              Kasba Peth, Hadapsar, and Swargate exceed safety thresholds.
             </p>
           </div>
+
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">Needs Attention</span>
-            <span className="font-bold text-rose-600">Immediate Action</span>
+            <span className="text-slate-400">Status</span>
+            <span className="font-bold text-rose-600">Immediate Attention</span>
           </div>
         </div>
 
-        {/* Card 3: PROTECTION GAP */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-            <span className="uppercase tracking-wider">Protection Gap</span>
-            <span className="p-1.5 rounded-xl bg-amber-50 text-amber-700">
+        {/* CARD 3: PROTECTION GAP */}
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider">
+            <span>Protection Gap</span>
+            <span className="p-2 rounded-xl bg-amber-50 text-amber-700">
               <ShieldAlert className="w-4 h-4" />
             </span>
           </div>
+
           <div className="my-3">
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-1.5">
               <span className="text-3xl font-black text-slate-900 tracking-tight">
-                {summary.totalProtectionGap.toLocaleString()}
+                {(summary.totalProtectionGap || 10770).toLocaleString()}
               </span>
-              <span className="text-xs font-bold text-rose-600">Shortfall</span>
+              <span className="text-xs font-bold text-amber-700">Citizens</span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1">
-              Citizens currently unserved by existing cooling shelters & kiosks.
+            <p className="text-[11px] text-slate-500 font-medium mt-1 leading-snug">
+              Unserved citizens exceeding available cooling & hydration infrastructure.
             </p>
           </div>
+
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">Citywide Adequacy</span>
-            <span className="font-bold text-amber-700">46% Fulfilled</span>
+            <span className="text-slate-400">Status</span>
+            <span className="font-bold text-amber-700">Deficit Active</span>
           </div>
         </div>
 
-        {/* Card 4: PRIORITY ACTION */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-            <span className="uppercase tracking-wider">Priority Action</span>
-            <span className="p-1.5 rounded-xl bg-blue-50 text-blue-600">
+        {/* CARD 4: PRIORITY ACTION */}
+        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider">
+            <span>Priority Action</span>
+            <span className="p-2 rounded-xl bg-blue-50 text-blue-600">
               <ListChecks className="w-4 h-4" />
             </span>
           </div>
+
           <div className="my-3">
-            <h4 className="text-sm font-bold text-slate-900 line-clamp-2 leading-snug">
-              {summary.priorityAction}
-            </h4>
-            <p className="text-[11px] text-slate-500 font-medium mt-1">
-              High solar load expected between 11:30 AM – 4:30 PM.
+            <span className="text-lg font-black text-slate-900 line-clamp-1">
+              Deploy Water Support
+            </span>
+            <p className="text-[11px] text-slate-500 font-medium mt-1 leading-snug">
+              Ward 21 (Kasba Peth) — Deploy cooling and water support during peak-risk window.
             </p>
           </div>
+
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">Dispatch Status</span>
-            <span className="font-bold text-blue-600">Pending Review</span>
+            <span className="text-slate-400">Affected</span>
+            <span className="font-bold text-blue-700">Ward 21 (Kasba Peth)</span>
           </div>
         </div>
       </div>
 
-      {/* 5-Day Outlook Strip */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs">
+      {/* ============================================================ */}
+      {/* C — 5-DAY HEAT OUTLOOK (OPERATIONAL AWARENESS)              */}
+      {/* ============================================================ */}
+      <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-orange-600" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              5-Day Municipal Heat-Risk Outlook
-            </h3>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              5-Day Municipal Heat Outlook
+            </h2>
           </div>
-          <span className="text-[11px] text-slate-400 font-medium">IMD Synoptic Calibrated</span>
+          <span className="text-[11px] text-slate-400 font-medium">Synoptic IMD Surface Forecast</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {summary.fiveDayOutlook.map((item, idx) => (
             <div
               key={idx}
-              className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
+              className={`p-3.5 rounded-2xl border flex flex-col items-center justify-center text-center transition-all ${
                 item.riskLevel === 'Critical'
-                  ? 'bg-rose-50/60 border-rose-200 text-rose-950'
+                  ? 'bg-rose-50/70 border-rose-200 text-rose-950'
                   : item.riskLevel === 'High'
-                  ? 'bg-orange-50/60 border-orange-200 text-orange-950'
+                  ? 'bg-orange-50/70 border-orange-200 text-orange-950'
                   : item.riskLevel === 'Developing'
-                  ? 'bg-amber-50/60 border-amber-200 text-amber-950'
-                  : 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
+                  ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                  : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
               }`}
             >
-              <span className="text-[10px] font-bold uppercase text-slate-500">{item.day}</span>
-              <span className="text-lg font-black tracking-tight my-0.5">{item.tempMax}°C</span>
+              <span className="text-[10px] font-bold uppercase text-slate-500">
+                {idx === 0 ? 'Today' : idx === 1 ? 'Tomorrow' : `Day ${idx + 1}`}
+              </span>
+              <span className="text-xl font-black tracking-tight my-1">{item.tempMax}°C</span>
               <span
-                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full mt-0.5 ${
+                className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
                   item.riskLevel === 'Critical'
                     ? 'bg-rose-600 text-white'
                     : item.riskLevel === 'High'
@@ -214,169 +274,262 @@ export const MunicipalCommandCenterPage: React.FC = () => {
               >
                 {item.riskLevel}
               </span>
+              <span className="text-[10px] text-slate-400 mt-1 font-medium">
+                {idx === 0 ? 'Peak Window' : idx === 1 ? '+0.4°C Trend' : 'Thermal Strain'}
+              </span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Main Home Content: 3 Important Areas */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* AREA 1 — WARD RISK MAP PREVIEW (7 Cols) */}
+      {/* ============================================================ */}
+      {/* D & E — WARD RISK MAP + PRIORITY WARD CARD                    */}
+      {/* ============================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+        {/* D — WARD RISK MAP (7 Cols) */}
         <div className="lg:col-span-7 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-600">
-                  AREA 1 • GEOGRAPHIC OVERVIEW
-                </span>
-                <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                  Ward Heat Risk Map Preview
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-orange-600">
+                    GEOGRAPHIC OVERVIEW
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                    DEMO / MODELLED
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 mt-0.5">
+                  Ward Risk Map Preview
                 </h3>
               </div>
+
               <button
                 onClick={() => setActiveMunicipalPage('ward-risk-map')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all shrink-0"
               >
-                <span>View Full Map</span>
+                <span>View Ward Risk Map</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {/* Map Preview */}
+            {/* Map Preview: Shows only the primary heat risk layer */}
             <PuneWardMap
               wards={wards}
-              selectedWardId={priorityWard?.id}
-              onSelectWard={handleSelectWard}
+              selectedWardId={displayedWard?.id}
+              onSelectWard={handleSelectWardFromMap}
               compact={true}
             />
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>6 Municipal Wards monitored under active Heat Action Plan</span>
+          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
+            <span className="text-[11px]">
+              Green = Normal • Yellow = Developing • Orange = High • Red = Critical
+            </span>
             <button
-              onClick={() => setActiveMunicipalPage('ward-risk-map')}
-              className="text-orange-600 font-bold hover:underline"
+              onClick={() => handleViewWardInGIS(displayedWard)}
+              className="text-orange-600 font-bold hover:underline text-xs flex items-center gap-1"
             >
-              View Ward Risk Map →
+              <span>Inspect {displayedWard?.name?.split(':')[0] || 'Ward'} on GIS</span>
+              <ArrowRight className="w-3 h-3" />
             </button>
           </div>
         </div>
 
-        {/* AREA 2 & AREA 3 (5 Cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* AREA 2 — PRIORITY WARD */}
-          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
-                AREA 2 • PRIORITY WARD
-              </span>
-              <span className="text-xs font-bold text-rose-600 bg-rose-100 px-2.5 py-1 rounded-full">
-                {priorityWard.riskLevel} Risk
+        {/* E — PRIORITY WARD (5 Cols) */}
+        <div className="lg:col-span-5 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          {displayedWard ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                  PRIORITY WARD
+                </span>
+                <span
+                  className={`text-xs font-black px-2.5 py-0.5 rounded-full ${
+                    displayedWard.riskLevel === 'Critical'
+                      ? 'bg-rose-100 text-rose-800'
+                      : 'bg-orange-100 text-orange-800'
+                  }`}
+                >
+                  {displayedWard.riskLevel} Risk ({displayedWard.riskScore}/100)
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                  {displayedWard.name}
+                </h3>
+                <p className="text-xs font-semibold text-rose-600 mt-1">
+                  Protection Gap: High ({displayedWard.protectionGap.toLocaleString()} Citizens Unserved)
+                </p>
+              </div>
+
+              {/* WHY IT NEEDS ATTENTION */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                  Why It Needs Attention
+                </span>
+                <p className="text-xs text-slate-700 font-medium mt-1 leading-relaxed">
+                  {displayedWard.whyAttention}
+                </p>
+              </div>
+
+              {/* RECOMMENDED ACTION */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200/70 rounded-2xl">
+                <span className="text-[10px] font-black text-blue-700 uppercase tracking-wider block">
+                  Recommended Action
+                </span>
+                <p className="text-xs text-slate-900 font-semibold mt-1 leading-relaxed">
+                  {displayedWard.recommendedAction ||
+                    'Deploy additional cooling and water support during the peak-risk period.'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-400 text-xs">
+              No priority ward identified. Select a ward on the map.
+            </div>
+          )}
+
+          {/* VIEW WARD BUTTON */}
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-400 font-medium">
+              Population: {displayedWard?.population?.toLocaleString() || 'N/A'}
+            </span>
+            <button
+              onClick={() => handleViewWardInGIS(displayedWard)}
+              className="px-4 py-2 rounded-2xl bg-[#1D1D1F] hover:bg-black text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+            >
+              <span>View Ward</span>
+              <ArrowRight className="w-3.5 h-3.5 text-orange-400" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* F & G — CURRENT MUNICIPAL ACTION & ACTIVE MUNICIPAL ALERT     */}
+      {/* ============================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
+        {/* F — CURRENT MUNICIPAL ACTION */}
+        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-xl bg-blue-50 text-blue-600">
+                  <ListChecks className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-800">
+                  Current Municipal Action
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                RECOMMENDED
               </span>
             </div>
 
-            <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
-              {priorityWard.name}
-            </h3>
-            <p className="text-xs text-slate-500 font-medium mb-3">
-              {priorityWard.zone} • Population: {priorityWard.population.toLocaleString()}
-            </p>
+            {/* WHAT, WHERE, WHEN, WHY */}
+            <div className="space-y-2.5 text-xs">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                  WHAT:
+                </span>
+                <p className="font-bold text-slate-900 mt-0.5">
+                  Deploy emergency water support & mobile misting tankers
+                </p>
+              </div>
 
-            {/* Key Metrics */}
-            <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-100 mb-3 text-xs">
-              <div>
-                <p className="text-slate-400 text-[10px]">Thermal Stress</p>
-                <p className="font-bold text-slate-800">{priorityWard.thermalStress.split(' ')[1]} ({priorityWard.temp}°C)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                    WHERE:
+                  </span>
+                  <p className="font-bold text-slate-900 mt-0.5">
+                    Ward 21 (Kasba Peth) — Mandai & Transit Hubs
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                    WHEN:
+                  </span>
+                  <p className="font-bold text-slate-900 mt-0.5">
+                    Peak-risk hours (11:30 AM – 4:30 PM)
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-slate-400 text-[10px]">Protection Gap</p>
-                <p className="font-bold text-rose-600">{priorityWard.protectionGap.toLocaleString()} Citizens</p>
+
+              <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/60">
+                <span className="text-[10px] font-black text-amber-800 uppercase tracking-wider block">
+                  WHY:
+                </span>
+                <p className="font-semibold text-amber-950 mt-0.5">
+                  High thermal stress (WBGT 31.8°C) + acute protection shortfall for vulnerable market vendors
+                </p>
               </div>
+            </div>
+          </div>
+
+          <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-400 font-medium">Status: Pending Verification</span>
+            <button
+              onClick={() => setActiveMunicipalPage('recommended-actions')}
+              className="px-4 py-2 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+            >
+              <span>View Action</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* G — ACTIVE MUNICIPAL ALERT */}
+        <div className="bg-gradient-to-br from-rose-50/60 via-white to-white rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-rose-100 mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-xl bg-rose-100 text-rose-700">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-extrabold uppercase tracking-wider text-rose-900">
+                  Active Municipal Alert
+                </h3>
+              </div>
+              <span className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
+                <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
+                ACTIVE
+              </span>
             </div>
 
             <div className="space-y-3">
               <div>
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Why This Ward Needs Attention
+                <h4 className="text-base font-black text-slate-900 tracking-tight">
+                  WARD 21 (KASBA PETH) — HIGH HUMAN HEAT RISK
                 </h4>
-                <p className="text-xs text-slate-700 font-medium mt-0.5 leading-relaxed bg-amber-50/50 p-2.5 rounded-xl border border-amber-200/50">
-                  {priorityWard.whyAttention}
+                <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                  High thermal stress + vulnerable exposure + protection shortfall in central pedestrian corridor.
                 </p>
               </div>
 
-              <div>
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Recommended Action
-                </h4>
-                <p className="text-xs text-slate-900 font-semibold mt-0.5 leading-relaxed bg-blue-50/50 p-2.5 rounded-xl border border-blue-200/50">
-                  {priorityWard.recommendedAction}
+              <div className="p-3.5 bg-white/95 rounded-2xl border border-rose-200 text-xs shadow-xs">
+                <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 block">
+                  Recommended:
+                </span>
+                <p className="font-bold text-slate-900 mt-0.5">
+                  Review cooling and water deployment. Expedite activation of shaded respite zones.
                 </p>
               </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <button
-                onClick={() => {
-                  setSelectedWard(priorityWard);
-                  setActiveMunicipalPage('ward-risk-map');
-                }}
-                className="text-xs font-semibold text-slate-600 hover:text-slate-900"
-              >
-                Inspect on GIS Map
-              </button>
-              <button
-                onClick={() => setActiveMunicipalPage('recommended-actions')}
-                className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
-              >
-                <span>View Action</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
             </div>
           </div>
 
-          {/* AREA 3 — CURRENT MUNICIPAL ALERT */}
-          <div className="bg-gradient-to-br from-rose-500/10 via-red-500/5 to-white rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-xs">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md border border-rose-300">
-                AREA 3 • CURRENT MUNICIPAL ALERT
-              </span>
-              <span className="flex items-center gap-1 text-[11px] font-bold text-rose-600">
-                <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
-                ACTIVE BROADCAST
-              </span>
-            </div>
-
-            <h4 className="text-base font-extrabold text-slate-900 mt-2">
-              {summary.currentAlert.title}
-            </h4>
-            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-              {summary.currentAlert.subtitle}
-            </p>
-
-            <div className="mt-3 p-3 bg-white/80 rounded-xl border border-rose-200/60 text-xs">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-rose-700">
-                Recommended Municipal Action:
-              </p>
-              <p className="font-semibold text-slate-800 mt-0.5">
-                {summary.currentAlert.recommendation}
-              </p>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <button
-                onClick={() => setActiveMunicipalPage('municipal-alerts')}
-                className="text-xs font-bold text-rose-700 hover:text-rose-900 flex items-center gap-1"
-              >
-                <span>Open Alert Center</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setActiveMunicipalPage('recommended-actions')}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold shadow-xs"
-              >
-                Deploy Teams
-              </button>
-            </div>
+          <div className="pt-4 mt-3 border-t border-rose-100 flex items-center justify-between">
+            <span className="text-xs text-slate-400 font-medium">Broadcast to Field Squads</span>
+            <button
+              onClick={() => setActiveMunicipalPage('municipal-alerts')}
+              className="px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+            >
+              <span>View All Alerts</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>

@@ -56,9 +56,7 @@ export const MunicipalProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (Array.isArray(wardsRes)) {
         setWards(wardsRes);
         // Default selected ward to highest risk if not selected
-        if (!selectedWard && wardsRes.length > 0) {
-          setSelectedWard(wardsRes[0]);
-        }
+        setSelectedWard((prev) => prev || (wardsRes.length > 0 ? wardsRes[0] : null));
       }
       if (Array.isArray(actRes)) {
         setActions(actRes);
@@ -74,7 +72,7 @@ export const MunicipalProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setIsRefreshing(false);
     }
-  }, [selectedWard]);
+  }, []);
 
   useEffect(() => {
     fetchMunicipalData();

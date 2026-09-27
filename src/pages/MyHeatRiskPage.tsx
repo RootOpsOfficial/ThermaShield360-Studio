@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useCitizen } from '../context/CitizenContext.js';
 import { RiskLevel, WardInfo } from '../types.js';
 import { LocalHeatRiskMap } from '../components/LocalHeatRiskMap.js';
+import { PersonalHeatImpactCard } from '../components/PersonalHeatImpactCard.js';
 import {
   MapPin,
   Clock,
@@ -574,6 +575,13 @@ export const MyHeatRiskPage: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {/* =========================================================================
+          HUMAN THERMAL STRESS IMPACT ENGINE: WHAT THIS MEANS FOR YOU
+          Answers: "What does the current heat condition mean for ME?"
+          With personal activity context, exposure intensity, and destination risk.
+          ========================================================================= */}
+      <PersonalHeatImpactCard />
 
       {/* =========================================================================
           SECTION 4: WHY IS MY HEAT RISK THIS LEVEL?

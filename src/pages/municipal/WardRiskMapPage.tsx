@@ -44,7 +44,7 @@ export const WardRiskMapPage: React.FC = () => {
             Ward Risk Map
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Spatial thermal stress and protection deficit analysis across Pune Municipal Corporation
+            Spatial thermal stress and protection deficit analysis across Maharashtra & National Municipal Corporations
           </p>
         </div>
 
@@ -74,7 +74,7 @@ export const WardRiskMapPage: React.FC = () => {
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-orange-600" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                Pune Ward Boundaries & Heat Intensity
+                Municipal Ward Boundaries & Heat Intensity GIS
               </h2>
             </div>
             <span className="text-[11px] font-medium text-slate-400">

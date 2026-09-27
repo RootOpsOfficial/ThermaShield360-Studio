@@ -12,6 +12,8 @@ export interface MunicipalWardData {
   id: string;
   name: string;
   zone: string;
+  city?: string;
+  state?: string;
   center: [number, number];
   bounds: [number, number][];
   population: number;

@@ -10,21 +10,8 @@ interface PuneWardMapProps {
   compact?: boolean;
 }
 
-// Projected coordinate bounds for Pune Metropolitan Area
-// Lat: 18.47 to 18.59, Lng: 73.78 to 73.96
-const MIN_LNG = 73.78;
-const MAX_LNG = 73.96;
-const MIN_LAT = 18.47;
-const MAX_LAT = 18.59;
 const SVG_WIDTH = 700;
 const SVG_HEIGHT = 500;
-
-function projectCoords(lat: number, lng: number): [number, number] {
-  const x = ((lng - MIN_LNG) / (MAX_LNG - MIN_LNG)) * SVG_WIDTH;
-  // Invert Y for latitude
-  const y = SVG_HEIGHT - ((lat - MIN_LAT) / (MAX_LAT - MIN_LAT)) * SVG_HEIGHT;
-  return [Math.round(x), Math.round(y)];
-}
 
 const getRiskColor = (level: MunicipalRiskLevel, isSelected: boolean) => {
   switch (level) {
@@ -79,14 +66,108 @@ export const PuneWardMap: React.FC<PuneWardMapProps> = ({
   compact = false,
 }) => {
   const [hoveredWard, setHoveredWard] = useState<MunicipalWardData | null>(null);
+  const [cityFilter, setCityFilter] = useState<string>('All');
+
+  // Extract unique cities present in wards
+  const availableCities = React.useMemo(() => {
+    const list: string[] = [];
+    wards.forEach((w) => {
+      const c = w.city || (w.name.includes('Pune') ? 'Pune' : undefined);
+      if (c && !list.includes(c)) list.push(c);
+    });
+    return list;
+  }, [wards]);
+
+  // Determine displayed wards: filter by selected city if any
+  const displayedWards = React.useMemo(() => {
+    let list: MunicipalWardData[] = [];
+    if (cityFilter !== 'All') {
+      const filtered = wards.filter(
+        (w) => (w.city || '').toLowerCase() === cityFilter.toLowerCase()
+      );
+      if (filtered.length > 0) list = filtered;
+    } else if (selectedWardId) {
+      const active = wards.find((w) => w.id === selectedWardId);
+      if (active?.city) {
+        const matchingCity = wards.filter((w) => w.city === active.city);
+        if (matchingCity.length > 0) list = matchingCity;
+      }
+    }
+    if (list.length === 0) {
+      // If multiple cities are present and 'All' is selected, show first cluster (e.g. Pune)
+      if (availableCities.length > 0 && availableCities.includes('Pune')) {
+        list = wards.filter((w) => (w.city || '').toLowerCase() === 'pune');
+      } else {
+        list = wards.slice(0, 12);
+      }
+    }
+    // Deduplicate by ID
+    const seen = new Set<string>();
+    return list.filter((w) => {
+      if (!w?.id || seen.has(w.id)) return false;
+      seen.add(w.id);
+      return true;
+    });
+  }, [wards, cityFilter, selectedWardId, availableCities]);
+
+  // Dynamic projection calculations
+  const { paddedMinLat, paddedMaxLat, paddedMinLng, paddedMaxLng } = React.useMemo(() => {
+    const lats = displayedWards.flatMap((w) => [w.center[0], ...w.bounds.map((b) => b[0])]);
+    const lngs = displayedWards.flatMap((w) => [w.center[1], ...w.bounds.map((b) => b[1])]);
+
+    const minLat = lats.length > 0 ? Math.min(...lats) : 18.47;
+    const maxLat = lats.length > 0 ? Math.max(...lats) : 18.59;
+    const minLng = lngs.length > 0 ? Math.min(...lngs) : 73.78;
+    const maxLng = lngs.length > 0 ? Math.max(...lngs) : 73.96;
+
+    const latSpan = Math.max(0.04, maxLat - minLat);
+    const lngSpan = Math.max(0.04, maxLng - minLng);
+
+    return {
+      paddedMinLat: minLat - latSpan * 0.12,
+      paddedMaxLat: maxLat + latSpan * 0.12,
+      paddedMinLng: minLng - lngSpan * 0.12,
+      paddedMaxLng: maxLng + lngSpan * 0.12,
+    };
+  }, [displayedWards]);
+
+  const projectCoords = (lat: number, lng: number): [number, number] => {
+    const x = ((lng - paddedMinLng) / (paddedMaxLng - paddedMinLng || 0.01)) * SVG_WIDTH;
+    const y = SVG_HEIGHT - ((lat - paddedMinLat) / (paddedMaxLat - paddedMinLat || 0.01)) * SVG_HEIGHT;
+    return [Math.round(x), Math.round(y)];
+  };
+
+  const activeCityName = cityFilter === 'All'
+    ? displayedWards[0]?.city || 'Municipal GIS Layer'
+    : `${cityFilter} Municipal GIS`;
 
   return (
     <div className={`relative w-full rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 shadow-inner flex flex-col ${compact ? 'h-[320px] sm:h-[380px]' : 'h-[460px] sm:h-[540px]'}`}>
-      {/* Top Map Bar with Legend */}
-      <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-none">
-        <div className="bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-white text-xs font-semibold flex items-center gap-2 pointer-events-auto">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>Pune Municipal GIS Layer</span>
+      {/* Top Map Bar with Legend and City Filter */}
+      <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <div className="bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-white text-xs font-semibold flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>{activeCityName}</span>
+          </div>
+
+          {availableCities.length > 1 && (
+            <div className="flex items-center gap-1 bg-slate-900/90 backdrop-blur-md p-1 rounded-xl border border-white/10 text-[10px]">
+              {availableCities.slice(0, 4).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCityFilter(c)}
+                  className={`px-2 py-0.5 rounded-lg transition-colors ${
+                    cityFilter === c || (cityFilter === 'All' && displayedWards[0]?.city === c)
+                      ? 'bg-orange-600 text-white font-bold'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Legend */}
@@ -132,25 +213,8 @@ export const PuneWardMap: React.FC<PuneWardMapProps> = ({
           {/* Grid Background */}
           <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#grid)" />
 
-          {/* River Mula-Mutha representation */}
-          <path
-            d="M 60 120 Q 220 180 340 230 T 480 270 T 660 290"
-            fill="none"
-            stroke="#1E293B"
-            strokeWidth="12"
-            strokeLinecap="round"
-          />
-          <path
-            d="M 60 120 Q 220 180 340 230 T 480 270 T 660 290"
-            fill="none"
-            stroke="#38BDF8"
-            strokeWidth="3"
-            strokeOpacity="0.4"
-            strokeDasharray="4 4"
-          />
-
           {/* Render Ward Polygons */}
-          {wards.map((ward) => {
+          {displayedWards.map((ward) => {
             const isSelected = selectedWardId === ward.id;
             const isHovered = hoveredWard?.id === ward.id;
             const colors = getRiskColor(ward.riskLevel, isSelected);

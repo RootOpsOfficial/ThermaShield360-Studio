@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import { useCitizen } from '../context/CitizenContext.js';
+import { GoogleThermalGisMap } from '../components/GoogleThermalGisMap.js';
 import {
   SafeRouteOption,
   RouteWaypoint,
@@ -34,6 +35,7 @@ import {
   Sun,
   Flame,
   Check,
+  Globe2,
 } from 'lucide-react';
 
 // Curated transit landmarks across Pune
@@ -76,6 +78,36 @@ export const SafeRoutePage: React.FC = () => {
 
   // Search input state
   const [destinationSearch, setDestinationSearch] = useState<string>('Mahatma Phule Mandai');
+  const [destSearchResults, setDestSearchResults] = useState<any[]>([]);
+  const [isSearchingDest, setIsSearchingDest] = useState<boolean>(false);
+  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>('google');
+
+  // Live Google Geocoding search for destination
+  useEffect(() => {
+    if (!destinationSearch || destinationSearch.trim().length < 3) {
+      setDestSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingDest(true);
+      try {
+        const res = await fetch(`/api/geocode/search?q=${encodeURIComponent(destinationSearch.trim())}`);
+        if (res.ok) {
+          const results = await res.json();
+          if (Array.isArray(results)) {
+            setDestSearchResults(results);
+          }
+        }
+      } catch (err) {
+        console.warn('Destination geocoding search failed:', err);
+      } finally {
+        setIsSearchingDest(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [destinationSearch]);
 
   // Route & calculation state
   const [routes, setRoutes] = useState<SafeRouteOption[]>([]);
@@ -149,15 +181,33 @@ export const SafeRoutePage: React.FC = () => {
     );
   }, []);
 
-  // Sync GPS from context if active
+  // Sync location from context if changed to a new city/ward
   useEffect(() => {
     if (location.lat && location.lng) {
-      if (location.isGps) {
+      const dist = Math.hypot(location.lat - originCoords.lat, location.lng - originCoords.lng);
+      if (dist > 0.05) {
+        const newOrigin = {
+          lat: location.lat,
+          lng: location.lng,
+          label: location.isGps ? 'Current GPS Location' : (location.ward?.name?.split(':')[0] || 'Origin Area'),
+        };
+        const newDest = {
+          lat: location.lat - 0.015,
+          lng: location.lng + 0.012,
+          label: `${location.ward.city || 'District'} Civic Center`,
+        };
+        setOriginCoords({ lat: newOrigin.lat, lng: newOrigin.lng });
+        setOriginLabel(newOrigin.label);
+        setDestCoords({ lat: newDest.lat, lng: newDest.lng });
+        setDestLabel(newDest.label);
+        setDestinationSearch(newDest.label);
+        fetchRoutes(newOrigin, newDest);
+      } else if (location.isGps) {
         setOriginCoords({ lat: location.lat, lng: location.lng });
         setOriginLabel('Current GPS Location');
       }
     }
-  }, [location.lat, location.lng, location.isGps]);
+  }, [location.lat, location.lng, location.ward, location.isGps, fetchRoutes, originCoords.lat, originCoords.lng]);
 
   // Derived active and alternative routes
   const balancedRoute =
@@ -665,24 +715,63 @@ export const SafeRoutePage: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center justify-between gap-1.5 min-w-0">
-              <span className="text-xs font-bold text-slate-800 truncate min-w-0 flex-1" title={destLabel}>
-                {destLabel}
-              </span>
-              <select
-                value={destLabel}
-                onChange={(e) => {
-                  const found = POPULAR_DESTINATIONS.find((d) => d.name === e.target.value);
-                  if (found) handleSelectDestination(found);
-                }}
-                className="text-[10px] font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg px-1.5 py-0.5 cursor-pointer focus:outline-hidden shrink-0 max-w-[125px] sm:max-w-[145px]"
-              >
-                {POPULAR_DESTINATIONS.map((d) => (
-                  <option key={d.name} value={d.name}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-1.5 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <div className="relative flex-1 min-w-0">
+                  <input
+                    type="text"
+                    value={destinationSearch}
+                    onChange={(e) => setDestinationSearch(e.target.value)}
+                    placeholder="Search any destination address..."
+                    className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-red-400"
+                  />
+                  {isSearchingDest && (
+                    <div className="absolute right-2 top-1.5">
+                      <RefreshCw className="w-3 h-3 text-slate-400 animate-spin" />
+                    </div>
+                  )}
+                  {destSearchResults.length > 0 && (
+                    <div className="absolute left-0 top-full mt-1 z-50 w-full bg-white rounded-xl shadow-xl border border-slate-200 p-1 max-h-48 overflow-y-auto">
+                      {destSearchResults.map((geo) => (
+                        <button
+                          key={geo.placeId || `${geo.lat}_${geo.lng}`}
+                          type="button"
+                          onClick={() => {
+                            setDestCoords({ lat: geo.lat, lng: geo.lng });
+                            setDestLabel(geo.displayName || geo.formattedAddress);
+                            setDestinationSearch(geo.displayName || geo.formattedAddress);
+                            setDestSearchResults([]);
+                            fetchRoutes(
+                              { lat: originCoords.lat, lng: originCoords.lng, label: originLabel },
+                              { lat: geo.lat, lng: geo.lng, label: geo.displayName || geo.formattedAddress }
+                            );
+                          }}
+                          className="w-full text-left px-2 py-1.5 text-xs hover:bg-red-50 rounded-lg text-slate-700 truncate block"
+                        >
+                          <div className="font-bold text-slate-900 truncate">{geo.displayName}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{geo.formattedAddress}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <select
+                  value={destLabel}
+                  onChange={(e) => {
+                    const found = POPULAR_DESTINATIONS.find((d) => d.name === e.target.value);
+                    if (found) handleSelectDestination(found);
+                  }}
+                  className="text-[10px] font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg px-1.5 py-1 cursor-pointer focus:outline-hidden shrink-0 max-w-[120px]"
+                >
+                  <option value="">Quick Pick...</option>
+                  {POPULAR_DESTINATIONS.map((d) => (
+                    <option key={d.name} value={d.name}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -959,12 +1048,48 @@ export const SafeRoutePage: React.FC = () => {
       {/* 4. Large Interactive Navigation Map */}
       <section className="apple-card overflow-hidden relative shadow-sm border border-slate-200/80 bg-slate-100 rounded-3xl">
         {/* Map Container */}
-        <div ref={mapContainerRef} className="w-full h-[460px] sm:h-[520px]" />
+        {mapEngine === 'google' ? (
+          <div className="w-full h-[500px] sm:h-[560px]">
+            <GoogleThermalGisMap
+              heightClass="h-full"
+              showLayerSelector={false}
+              centerLat={originCoords.lat}
+              centerLng={originCoords.lng}
+              zoom={14}
+              routeCoordinates={{
+                fastest: fastestRoute?.pathCoordinates,
+                safe: (selectedRouteType === 'balanced' ? balancedRoute : safeRoute)?.pathCoordinates,
+              }}
+            />
+          </div>
+        ) : (
+          <div ref={mapContainerRef} className="w-full h-[460px] sm:h-[520px]" />
+        )}
 
         {/* Top Floating Map Controls & Protection Layer Filter */}
         <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
           {/* Layer Filter Pills */}
           <div className="flex flex-wrap items-center gap-1 bg-white/95 backdrop-blur-md p-1 rounded-2xl shadow-md border border-slate-200/80 pointer-events-auto text-xs">
+            <div className="bg-slate-200/80 p-0.5 rounded-xl flex items-center gap-1 text-[11px] font-bold mr-1">
+              <button
+                onClick={() => setMapEngine('google')}
+                className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                  mapEngine === 'google' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Globe2 className="w-3 h-3" />
+                <span>Google Maps</span>
+              </button>
+              <button
+                onClick={() => setMapEngine('leaflet')}
+                className={`px-2 py-1 rounded-lg transition-all ${
+                  mapEngine === 'leaflet' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>CartoDB</span>
+              </button>
+            </div>
+
             <span className="text-[10px] font-bold text-slate-400 uppercase px-1.5 hidden sm:inline">
               Corridor Protection:
             </span>
@@ -1268,7 +1393,7 @@ export const SafeRoutePage: React.FC = () => {
       {/* 8. Data Attribution & Transparency Footer */}
       <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 px-1 pt-2">
         <span>Routing: Real OSRM Road Geometry • Microclimate: Modelled Solar Irradiance & WBGT</span>
-        <span>Protection Network © Pune Municipal Corporation (PMC) & OSM Contributors</span>
+        <span>Protection Network © Municipal Disaster Management & OSM Contributors</span>
       </div>
     </div>
   );

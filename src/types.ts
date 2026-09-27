@@ -6,6 +6,9 @@ export interface WardInfo {
   id: string;
   name: string;
   zone: string;
+  city?: string;
+  state?: string;
+  regionType?: 'Maharashtra' | 'National' | 'Local';
   center: [number, number];
   bounds: [number, number][];
   population: number;
@@ -304,11 +307,20 @@ export interface RouteProtectionSummary {
 }
 
 export interface DepartureAdvice {
-  bestTimeToLeave: string;
-  peakHeatPeriod: string;
-  routeRisk: RiskLevel;
-  advice: string;
-  tempSavingEstimate: string;
+  bestTimeToLeave?: string;
+  peakHeatPeriod?: string;
+  routeRisk?: RiskLevel;
+  advice?: string;
+  tempSavingEstimate?: string;
+  optimalDepartureWindow?: string;
+  currentUrgency?: string;
+  peakHeatWindow?: string;
+  hourlyThermalProjection?: {
+    time: string;
+    wbgt: number;
+    risk: string;
+  }[];
+  hydrationsRecommendationMlPerHour?: number;
 }
 
 export interface RouteResourcePoint {
@@ -442,6 +454,96 @@ export interface CitizenHeatRiskResponse {
   dataStatus: DataSourceLabel;
   confidence: string;
   lastUpdated: string;
+  personalImpact?: PersonalHeatImpact;
+}
+
+export type ActivityType =
+  | 'Office / Desk Work'
+  | 'College / Student'
+  | 'Outdoor Construction'
+  | 'Street Vendor'
+  | 'Delivery / Rider'
+  | 'Traffic / Police Duty'
+  | 'Municipal Field Work'
+  | 'Agriculture'
+  | 'Walking / Commuting'
+  | 'Driving'
+  | 'Shop / Market Work'
+  | 'General Outdoor Activity'
+  | 'General Indoor Activity';
+
+export interface PersonalHeatImpactInput {
+  currentTemp?: number;
+  humidity?: number;
+  windSpeedKmH?: number;
+  solarRadiation?: number;
+  uvIndex?: number;
+  wbgt?: number;
+  utci?: number;
+  heatIndex?: number;
+  ward?: WardInfo;
+  activityType?: ActivityType | string;
+  outdoorExposure?: boolean;
+  exposureDuration?: string;
+  ageGroup?: string;
+  hasHealthCondition?: boolean;
+  isOutdoorWorker?: boolean;
+  nearbyCoolingCount?: number;
+  nearbyWaterCount?: number;
+  nearbyShadeCount?: number;
+  destinationContext?: {
+    name: string;
+    temp: number;
+    humidity: number;
+    windSpeedKmH: number;
+    solarRadiation: number;
+    wbgt?: number;
+    utci?: number;
+    ward?: WardInfo;
+    nearbyCoolingCount?: number;
+    nearbyWaterCount?: number;
+  };
+}
+
+export interface PersonalHeatImpact {
+  riskLevel: 'Low' | 'Moderate' | 'High' | 'Extreme' | 'Critical';
+  headline: string;
+  meaningForUser: string;
+  thermalStress: {
+    wbgt: number;
+    utci: number;
+    heatIndex: number;
+    category: string;
+  };
+  environmentalFactors: {
+    temperature: number;
+    humidity: number;
+    windSpeed: number;
+    solarRadiation: number;
+    shadeAvailability: number | null;
+    coolingAvailability: number | null;
+  };
+  activity: {
+    type: string;
+    outdoorExposure: boolean;
+    exposureIntensity: 'Low' | 'Moderate' | 'High' | 'Severe';
+    duration: string;
+  };
+  effects: string[];
+  warnings: string[];
+  recommendations: string[];
+  peakRiskPeriod: string;
+  protectionFactors: string[];
+  riskReasons: string[];
+  destinationComparison?: {
+    destinationName: string;
+    destinationRiskLevel: 'Low' | 'Moderate' | 'High' | 'Extreme' | 'Critical';
+    differenceSummary: string;
+    isHigherRisk: boolean;
+    factors: string[];
+    recommendations: string[];
+  };
+  dataStatus: 'LIVE' | 'MODELLED' | 'DEMO';
 }
 
 export interface LocalRiskMapAreaFeature {

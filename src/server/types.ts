@@ -6,6 +6,9 @@ export interface WardInfo {
   id: string;
   name: string;
   zone: string;
+  city?: string;
+  state?: string;
+  regionType?: 'Maharashtra' | 'National' | 'Local';
   center: [number, number]; // [lat, lng]
   bounds: [number, number][]; // Polygon coordinates
   population: number;
@@ -191,17 +194,23 @@ export interface HealthcareRouteResponse {
 }
 
 export interface RouteWaypoint {
-  lat: number;
-  lng: number;
+  lat?: number;
+  lng?: number;
+  order?: number;
+  name?: string;
   instruction: string;
-  distanceMeters: number;
+  distanceMeters?: number;
+  distanceFromPrevM?: number;
   durationSeconds?: number;
-  thermalExposure: RiskLevel;
+  thermalExposure?: RiskLevel;
+  heatRiskSegment?: string;
   heatRiskScore?: number;
-  shadeCoveragePct: number;
+  shadeLevel?: string;
+  shadeCoveragePct?: number;
   solarExposure?: 'Low' | 'Moderate' | 'High' | 'Extreme';
   riskColor?: string;
   isHighRiskSegment?: boolean;
+  coords?: [number, number];
   nearbyProtection?: {
     id?: string;
     name: string;
@@ -212,31 +221,49 @@ export interface RouteWaypoint {
 
 export interface RouteProtectionSummary {
   waterCount: number;
+  waterPointsCount?: number;
   coolingCount: number;
+  coolingSheltersCount?: number;
   shadeCount: number;
+  shadedCanopyKm?: number;
   parkCount: number;
   healthcareCount: number;
-  highRiskSegmentCount: number;
-  averageCanopyPct: number;
-  perceivedTempDeltaDegC: number;
-  nearestProtectionMeters: number;
+  highRiskSegmentCount?: number;
+  averageCanopyPct?: number;
+  perceivedTempDeltaDegC?: number;
+  nearestProtectionMeters?: number;
+  hydrationIntervalMinutes?: number;
 }
 
 export interface DepartureAdvice {
-  bestTimeToLeave: string;
-  peakHeatPeriod: string;
-  routeRisk: RiskLevel;
-  advice: string;
-  tempSavingEstimate: string;
+  bestTimeToLeave?: string;
+  peakHeatPeriod?: string;
+  routeRisk?: RiskLevel;
+  advice?: string;
+  tempSavingEstimate?: string;
+  optimalDepartureWindow?: string;
+  currentUrgency?: string;
+  peakHeatWindow?: string;
+  hourlyThermalProjection?: {
+    time: string;
+    wbgt: number;
+    risk: string;
+  }[];
+  hydrationsRecommendationMlPerHour?: number;
 }
 
 export interface RouteResourcePoint {
   id: string;
   name: string;
-  type: 'water' | 'cooling' | 'shade' | 'healthcare' | 'park';
-  lat: number;
-  lng: number;
+  type: 'water' | 'cooling' | 'shade' | 'healthcare' | 'park' | 'WATER_BOOTH' | 'COOLING_CENTER' | 'TREE_CANOPY' | 'HEALTHCARE';
+  lat?: number;
+  lng?: number;
+  coords?: number[];
   distanceKm?: number;
+  distanceMeters?: number;
+  isOpen?: boolean;
+  capacityOrStatus?: string;
+  routeSegmentKm?: number;
   address?: string;
   amenities?: string[];
   status?: string;
@@ -245,16 +272,26 @@ export interface RouteResourcePoint {
 export interface SafeRouteOption {
   id: string;
   name: string; // 'FASTEST ROUTE' | 'SAFE & FAST (SUM ALGORITHM)' | 'THERMAL-SAFE ROUTE'
-  routeType: 'fastest' | 'balanced' | 'safe';
-  tagline: string;
+  routeType?: 'fastest' | 'balanced' | 'safe';
+  tag?: string;
+  tagline?: string;
+  isRecommended?: boolean;
   distanceKm: number;
-  timeMins: number;
+  timeMins?: number;
+  durationMinutes?: number;
   durationSeconds?: number;
-  heatExposureLevel: RiskLevel;
-  heatExposureScore: number; // 0 - 100
-  treeCanopyPct: number;
-  perceivedTempDeltaDegC: number; // e.g. -2.8C
-  protectionPointsCount: {
+  shadePercentage?: number;
+  thermalExposureScore?: number;
+  dehydrationRisk?: string;
+  estimatedFluidLossMl?: number;
+  heatStressIndex?: string;
+  wbgtAverage?: number;
+  heatIndexAverage?: number;
+  heatExposureLevel?: RiskLevel;
+  heatExposureScore?: number; // 0 - 100
+  treeCanopyPct?: number;
+  perceivedTempDeltaDegC?: number; // e.g. -2.8C
+  protectionPointsCount?: {
     water: number;
     cooling: number;
     shade: number;
@@ -264,6 +301,7 @@ export interface SafeRouteOption {
   protectionSummary?: RouteProtectionSummary;
   pathCoordinates: [number, number][]; // [lat, lng]
   waypoints: RouteWaypoint[];
+  warnings?: string[];
   recalculatedDueToRisk?: boolean;
   rerouteExplanation?: string;
   dataSource?: 'LIVE' | 'MODELLED' | 'CURATED';
@@ -361,6 +399,7 @@ export interface CitizenHeatRiskResponse {
   dataStatus: DataSourceLabel;
   confidence: string;
   lastUpdated: string;
+  personalImpact?: any;
 }
 
 export interface LocalRiskMapAreaFeature {
@@ -587,4 +626,5 @@ export interface CitizenMyRiskData {
   lastUpdated: string;
   dataStatus: DataSourceLabel;
   dataSource: string;
+  personalImpact?: any;
 }

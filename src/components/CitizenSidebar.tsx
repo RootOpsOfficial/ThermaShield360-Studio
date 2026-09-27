@@ -83,7 +83,7 @@ export const CitizenSidebar: React.FC = () => {
             <span>Civic Protection Active</span>
           </div>
           <p className="text-[11px] text-orange-900/80 leading-relaxed">
-            Free drinking water kiosks & misted shelters are open throughout Pune.
+            Free drinking water kiosks & misted shelters are open throughout the municipal protection network.
           </p>
         </div>
       </aside>

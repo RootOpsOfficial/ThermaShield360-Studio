@@ -172,8 +172,13 @@ export const LocalHeatRiskMap: React.FC<LocalHeatRiskMapProps> = ({
         attributionControl: false,
       });
 
-      // CartoDB Voyager tiles (clean, high-resolution Apple-style real street map)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      // CartoDB Voyager tiles with CARTO Basemaps API key
+      const cartoKey =
+        (import.meta as any).env?.VITE_CARTO_API_KEY ||
+        'cb1_401u_1_82b76b95e0b97bfabce32af7';
+      const keyQuery = cartoKey ? `?key=${cartoKey}` : '';
+
+      L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${keyQuery}`, {
         maxZoom: 19,
         subdomains: 'abcd',
       }).addTo(map);

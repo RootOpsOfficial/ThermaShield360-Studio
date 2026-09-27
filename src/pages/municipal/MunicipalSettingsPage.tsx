@@ -74,7 +74,7 @@ export const MunicipalSettingsPage: React.FC = () => {
               <input
                 type="text"
                 disabled
-                value={summary?.cityName || 'Pune Municipal Corporation (PMC)'}
+                value={summary?.cityName || 'Municipal Corporation'}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-semibold text-slate-600 cursor-not-allowed"
               />
             </div>

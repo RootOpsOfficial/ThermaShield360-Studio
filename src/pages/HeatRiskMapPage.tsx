@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useCitizen } from '../context/CitizenContext.js';
+import { RealtimeThermalHeatmap } from '../components/RealtimeThermalHeatmap.js';
+import { GoogleThermalGisMap } from '../components/GoogleThermalGisMap.js';
 import { InteractiveGisMap } from '../components/InteractiveGisMap.js';
 import { WardInfo } from '../types.js';
 import {
@@ -15,11 +17,15 @@ import {
   Snowflake,
   Cross,
   Compass,
+  Sparkles,
+  Globe2,
+  Activity,
 } from 'lucide-react';
 
 export const HeatRiskMapPage: React.FC = () => {
   const { location, selectWard, protectionPoints, healthcareFacilities, riskCurrent } = useCitizen();
   const [selectedWard, setSelectedWard] = useState<WardInfo>(location.ward);
+  const [mapEngine, setMapEngine] = useState<'heatmap' | 'google' | 'vector'>('heatmap');
 
   const wardProtection = protectionPoints.filter((p) => p.wardId === selectedWard.id);
   const wardHealthcare = healthcareFacilities.filter((h) => h.wardId === selectedWard.id);
@@ -31,48 +37,80 @@ export const HeatRiskMapPage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              Interactive GIS Heat Risk & Protection Map
+              National & Hyperlocal Heat Risk Intelligence Map
             </h1>
-            <span className="apple-badge bg-emerald-100 text-emerald-800">
-              PostGIS Vector Engine
+            <span className="apple-badge bg-orange-100 text-orange-800 flex items-center gap-1 font-semibold">
+              <Flame className="w-3 h-3 text-orange-600 animate-pulse" /> Pan-India Continuous Surface
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Explore Pune municipal wards, urban heat islands (UHI), cooling sanctuaries, and microclimate risk pockets.
+            Continuous biometeorological thermal surface across India with progressive Level-of-Detail zoom: National → State → District → City → Ward/Village.
           </p>
         </div>
 
-        {/* Quick Ward Picker */}
+        {/* Engine Switcher */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-medium hidden sm:inline">Select Ward:</span>
-          <select
-            value={selectedWard.id}
-            onChange={(e) => {
-              const target = location.allWards.find((w) => w.id === e.target.value);
-              if (target) {
-                setSelectedWard(target);
-                selectWard(target.id);
-              }
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white border border-black/10 text-xs font-semibold text-slate-800 shadow-xs"
-          >
-            {location.allWards.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
+          <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 text-xs font-semibold shadow-inner">
+            <button
+              onClick={() => setMapEngine('heatmap')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                mapEngine === 'heatmap'
+                  ? 'bg-orange-600 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>Thermal Heatmap</span>
+            </button>
+            <button
+              onClick={() => setMapEngine('google')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                mapEngine === 'google'
+                  ? 'bg-white text-blue-700 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Globe2 className="w-3.5 h-3.5" />
+              <span>Google Maps</span>
+            </button>
+            <button
+              onClick={() => setMapEngine('vector')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                mapEngine === 'vector'
+                  ? 'bg-white text-slate-900 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Analytical Schematic</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main Full-Scale Interactive Map Card */}
       <section className="apple-card p-4 sm:p-5">
-        <InteractiveGisMap
-          heightClass="h-[520px]"
-          showLayerSelector={true}
-          selectedWardId={selectedWard.id}
-          onSelectWard={(ward) => setSelectedWard(ward)}
-        />
+        {mapEngine === 'heatmap' ? (
+          <RealtimeThermalHeatmap
+            heightClass="h-[600px]"
+            initialMetric="wbgt"
+          />
+        ) : mapEngine === 'google' ? (
+          <GoogleThermalGisMap
+            heightClass="h-[560px]"
+            showLayerSelector={true}
+            centerLat={location.lat}
+            centerLng={location.lng}
+            zoom={14}
+          />
+        ) : (
+          <InteractiveGisMap
+            heightClass="h-[520px]"
+            showLayerSelector={true}
+            selectedWardId={selectedWard.id}
+            onSelectWard={(ward) => setSelectedWard(ward)}
+          />
+        )}
       </section>
 
       {/* Ward Intelligence Deep-Dive Grid */}

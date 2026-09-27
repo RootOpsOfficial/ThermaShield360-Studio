@@ -92,12 +92,15 @@ export function calculateUTCI(tempC: number, rhPct: number, windSpeedMs: number,
 }
 
 /**
- * Categorizes risk level based on WBGT / UTCI thresholds
+ * Categorizes risk level based on WBGT / UTCI thresholds and ambient temperature context
  */
-export function categorizeThermalStress(wbgt: number, utci: number): RiskLevel {
-  if (wbgt >= 32 || utci >= 38) return 'Extreme';
-  if (wbgt >= 29 || utci >= 32) return 'High';
-  if (wbgt >= 26 || utci >= 28) return 'Moderate';
+export function categorizeThermalStress(wbgt: number, utci: number, tempC?: number): RiskLevel {
+  // Extreme: WBGT >= 32.0 or (UTCI >= 42 and ambient >= 32)
+  if (wbgt >= 32 || (utci >= 42 && (tempC === undefined || tempC >= 32))) return 'Extreme';
+  // High: WBGT >= 29.0 or (UTCI >= 38 and ambient >= 28)
+  if (wbgt >= 29 || (utci >= 38 && (tempC === undefined || tempC >= 28))) return 'High';
+  // Moderate: WBGT >= 26.0 or (UTCI >= 32 and ambient >= 25)
+  if (wbgt >= 26 || (utci >= 32 && (tempC === undefined || tempC >= 24))) return 'Moderate';
   return 'Low';
 }
 

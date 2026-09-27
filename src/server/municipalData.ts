@@ -1,249 +1,188 @@
-import { PUNE_WARDS, PROTECTION_POINTS, HEALTHCARE_FACILITIES } from './geoData.js';
+import { ALL_REGIONAL_WARDS, PUNE_WARDS } from './geoData.js';
 import {
   MunicipalSummary,
   MunicipalWardData,
   MunicipalActionItem,
   ProtectionResourceItem,
   MunicipalAlertItem,
-  MunicipalRiskLevel,
 } from '../types/municipal.js';
+import { WeatherCurrent, WeatherDailyForecast } from './types.js';
+import { calculateWBGT, calculateUTCI, categorizeThermalStress } from './thermalEngine.js';
+import { CivicProtectionAssetRow, WardDemographicsRow } from './databaseService.js';
 
-export function getMunicipalWards(): MunicipalWardData[] {
-  return [
-    {
-      id: 'ward-21',
-      name: 'Ward 21: Kasba Peth - Vishrambaug Wada',
-      zone: 'Heritage Core Zone',
-      center: [18.5178, 73.8582],
-      bounds: [
-        [18.526, 73.851],
-        [18.528, 73.866],
-        [18.511, 73.869],
-        [18.508, 73.852],
-        [18.526, 73.851],
-      ],
-      population: 178000,
-      vulnerableCount: 46200,
-      riskLevel: 'Critical',
-      riskScore: 84,
-      thermalStress: 'WBGT 31.8°C (Dangerous Thermal Load)',
-      wbgt: 31.8,
-      temp: 39.2,
-      vulnerableExposure: '46,200 At-Risk Residents (Seniors & Market Vendors)',
-      demand: 5800,
-      capacity: 1420,
-      protectionGap: 4380,
-      fulfillmentPct: 24,
-      whyAttention: '89% paved concrete density, narrow market corridors, and highest deficit of air-cooled respite spaces in the city.',
-      recommendedAction: 'Deploy mobile mist-cooling tankers at Mandai Bazaar and open 24/7 civic cooling shelters.',
-    },
-    {
-      id: 'ward-18',
-      name: 'Ward 18: Hadapsar - Mundhwa',
-      zone: 'East Industrial Zone',
-      center: [18.502, 73.927],
-      bounds: [
-        [18.524, 73.905],
-        [18.528, 73.952],
-        [18.481, 73.955],
-        [18.479, 73.907],
-        [18.524, 73.905],
-      ],
-      population: 230000,
-      vulnerableCount: 57500,
-      riskLevel: 'High',
-      riskScore: 78,
-      thermalStress: 'WBGT 29.6°C (Severe Heat Strain)',
-      wbgt: 29.6,
-      temp: 38.8,
-      vulnerableExposure: '57,500 Informal Workers & Industrial Laborers',
-      demand: 6900,
-      capacity: 2200,
-      protectionGap: 4700,
-      fulfillmentPct: 32,
-      whyAttention: 'Large population of outdoor laborers under uninsulated tin roofs with sparse tree canopy (16%).',
-      recommendedAction: 'Install 4 additional high-flow cold water dispensers and mandate construction site shade breaks.',
-    },
-    {
-      id: 'ward-25',
-      name: 'Ward 25: Swargate - Parvati',
-      zone: 'South Transit Zone',
-      center: [18.498, 73.856],
-      bounds: [
-        [18.511, 73.847],
-        [18.513, 73.868],
-        [18.484, 73.869],
-        [18.482, 73.848],
-        [18.511, 73.847],
-      ],
-      population: 188000,
-      vulnerableCount: 48800,
-      riskLevel: 'High',
-      riskScore: 73,
-      thermalStress: 'WBGT 28.9°C (Elevated Discomfort)',
-      wbgt: 28.9,
-      temp: 38.2,
-      vulnerableExposure: '48,800 Bus Transit Commuters & Dense Tenements',
-      demand: 5200,
-      capacity: 2400,
-      protectionGap: 2800,
-      fulfillmentPct: 46,
-      whyAttention: 'Major transit interchange with heavy pedestrian tarmac exposure at Jedhe Chowk.',
-      recommendedAction: 'Erect temporary tensile shade canopies over the bus concourse and distribute ORS packets.',
-    },
-    {
-      id: 'ward-14',
-      name: 'Ward 14: Shivajinagar - Ghole Road',
-      zone: 'Central Pune Zone',
-      center: [18.5314, 73.8446],
-      bounds: [
-        [18.542, 73.834],
-        [18.545, 73.856],
-        [18.524, 73.861],
-        [18.518, 73.839],
-        [18.542, 73.834],
-      ],
-      population: 142000,
-      vulnerableCount: 28400,
-      riskLevel: 'High',
-      riskScore: 68,
-      thermalStress: 'WBGT 28.4°C (Moderate to High)',
-      wbgt: 28.4,
-      temp: 37.9,
-      vulnerableExposure: '28,400 Commercial & College Commuters',
-      demand: 3400,
-      capacity: 1850,
-      protectionGap: 1550,
-      fulfillmentPct: 54,
-      whyAttention: 'Heavy vehicular traffic and high radiant asphalt temperatures along FC Road spine.',
-      recommendedAction: 'Extend civic air-conditioned center hours and replenish water kiosks along commercial corridors.',
-    },
-    {
-      id: 'ward-12',
-      name: 'Ward 12: Viman Nagar - Nagar Road',
-      zone: 'North-East Airport Zone',
-      center: [18.567, 73.914],
-      bounds: [
-        [18.584, 73.896],
-        [18.586, 73.935],
-        [18.552, 73.938],
-        [18.551, 73.898],
-        [18.584, 73.896],
-      ],
-      population: 154000,
-      vulnerableCount: 26000,
-      riskLevel: 'Developing',
-      riskScore: 61,
-      thermalStress: 'WBGT 27.5°C (Caution Level)',
-      wbgt: 27.5,
-      temp: 37.4,
-      vulnerableExposure: '26,000 Suburban Residents',
-      demand: 2600,
-      capacity: 1600,
-      protectionGap: 1000,
-      fulfillmentPct: 62,
-      whyAttention: 'Open highway stretches without tree shade increasing daytime radiant heat.',
-      recommendedAction: 'Ensure public garden shading is accessible and pre-position hydration supplies.',
-    },
-    {
-      id: 'ward-07',
-      name: 'Ward 7: Aundh - Baner',
-      zone: 'North-West Tech Zone',
-      center: [18.558, 73.807],
-      bounds: [
-        [18.575, 73.792],
-        [18.577, 73.824],
-        [18.541, 73.828],
-        [18.542, 73.794],
-        [18.575, 73.792],
-      ],
-      population: 165000,
-      vulnerableCount: 24700,
-      riskLevel: 'Developing',
-      riskScore: 54,
-      thermalStress: 'WBGT 26.8°C (Normal Discomfort)',
-      wbgt: 26.8,
-      temp: 36.8,
-      vulnerableExposure: '24,700 Residents',
-      demand: 2100,
-      capacity: 1500,
-      protectionGap: 600,
-      fulfillmentPct: 71,
-      whyAttention: 'Active construction clusters in Baner require localized cooling stations.',
-      recommendedAction: 'Conduct spot inspections of construction worker resting shelters.',
-    },
-    {
-      id: 'ward-09',
-      name: 'Ward 9: Kothrud - Bavdhan',
-      zone: 'West Hills Zone',
-      center: [18.5074, 73.8077],
-      bounds: [
-        [18.521, 73.792],
-        [18.523, 73.821],
-        [18.491, 73.818],
-        [18.489, 73.791],
-        [18.521, 73.792],
-      ],
-      population: 195000,
-      vulnerableCount: 31000,
-      riskLevel: 'Normal',
-      riskScore: 42,
-      thermalStress: 'WBGT 25.2°C (Baseline Seasonal)',
-      wbgt: 25.2,
-      temp: 35.8,
-      vulnerableExposure: '31,000 Residents',
-      demand: 1800,
-      capacity: 1550,
-      protectionGap: 250,
-      fulfillmentPct: 86,
-      whyAttention: 'Substantial tree canopy (44%) and green hillside buffers naturally suppress heat island effect.',
-      recommendedAction: 'Maintain routine municipal water kiosk pressure and sanitation.',
-    },
-  ];
+export function getMunicipalWards(
+  weather?: WeatherCurrent,
+  assets?: CivicProtectionAssetRow[],
+  demographics?: WardDemographicsRow[],
+  cityFilter?: string
+): MunicipalWardData[] {
+  // If no live weather provided, use base seasonal conditions
+  const baseTemp = weather?.temp ?? 32.0;
+  const baseRh = weather?.humidity ?? 48;
+  const baseWind = (weather?.windSpeed ?? 8.0) / 3.6; // m/s
+  const baseSolar = weather?.solarIrradiance ?? 500;
+
+  let targetWards = ALL_REGIONAL_WARDS;
+  if (cityFilter && cityFilter !== 'All') {
+    const filtered = ALL_REGIONAL_WARDS.filter(
+      (w) => (w.city || '').toLowerCase() === cityFilter.toLowerCase()
+    );
+    if (filtered.length > 0) {
+      targetWards = filtered;
+    }
+  }
+
+  return targetWards.map((ward) => {
+    // 1. Calculate ward microclimate incorporating Urban Heat Island (UHI) offset
+    const wardTemp = Math.round((baseTemp + ward.uhiOffsetDegC) * 10) / 10;
+    const wardRh = Math.max(20, Math.min(95, Math.round(baseRh - ward.uhiOffsetDegC * 1.5)));
+    const wardWbgt = calculateWBGT(wardTemp, wardRh, baseSolar, baseWind);
+    const wardUtci = calculateUTCI(wardTemp, wardRh, baseWind, baseSolar);
+    const thermalStressCategory = categorizeThermalStress(wardWbgt, wardUtci, wardTemp);
+
+    // 2. Vulnerability & Demographic demand
+    const demo = demographics?.find((d) => d.ward_id === ward.id);
+    const vulnerableCount = demo?.vulnerable_count ?? ward.vulnerableCount;
+
+    // Protection demand ratio scales with biological thermal load (WBGT)
+    let demandRatio = 0.04;
+    if (wardWbgt >= 32.0) demandRatio = 0.16;
+    else if (wardWbgt >= 29.0) demandRatio = 0.12;
+    else if (wardWbgt >= 26.0) demandRatio = 0.08;
+
+    const demand = Math.round(vulnerableCount * demandRatio);
+
+    // 3. Protection capacity from database assets
+    const wardAssets = (assets || []).filter((a) => a.ward_id === ward.id && a.is_active);
+    let capacity = wardAssets.reduce((sum, a) => sum + (a.daily_capacity || 150), 0);
+    if (capacity === 0) {
+      // Default baseline municipal capacity if no specific assets registered in DB
+      capacity = ward.id === 'ward-21' ? 1420 : ward.id === 'ward-18' ? 2200 : ward.id === 'ward-25' ? 2400 : 1600;
+    }
+
+    const protectionGap = Math.max(0, demand - capacity);
+    const fulfillmentPct = demand > 0 ? Math.min(100, Math.round((capacity / demand) * 100)) : 100;
+
+    // 4. Deterministic composite ward risk score: (thermal * 0.45) + (vulnerability * 0.35) + (gap * 0.20)
+    const thermalHazard = Math.min(100, Math.max(0, ((wardWbgt - 20) / (34 - 20)) * 100));
+    const gapRatio = demand > 0 ? Math.min(100, (protectionGap / demand) * 100) : 0;
+    const riskScore = Math.round(thermalHazard * 0.45 + (ward.vulnerabilityIndex || 50) * 0.35 + gapRatio * 0.2);
+
+    let riskLevel: MunicipalWardData['riskLevel'] = 'Normal';
+    if (riskScore >= 75) riskLevel = 'Critical';
+    else if (riskScore >= 55) riskLevel = 'High';
+    else if (riskScore >= 35) riskLevel = 'Developing';
+
+    const whyAttention = `${ward.builtDensityPct}% built density (+${ward.uhiOffsetDegC}°C UHI elevation) with ${vulnerableCount.toLocaleString()} vulnerable residents and a ${protectionGap.toLocaleString()} person daytime protection shortfall.`;
+    const recommendedAction =
+      protectionGap > 2000
+        ? `Deploy mobile mist-cooling tankers at ${ward.highRiskAreas[0] || 'central junctions'} and extend civic cooling shelter hours.`
+        : protectionGap > 500
+        ? `Install high-flow cold water dispensers and mandate midday outdoor rest periods.`
+        : `Maintain routine municipal water kiosk replenishment and shaded resting canopies.`;
+
+    return {
+      id: ward.id,
+      name: ward.name,
+      zone: ward.zone,
+      city: ward.city,
+      state: ward.state,
+      center: ward.center,
+      bounds: ward.bounds,
+      population: ward.population,
+      vulnerableCount,
+      riskLevel,
+      riskScore,
+      thermalStress: `WBGT ${wardWbgt}°C (${thermalStressCategory} Load)`,
+      wbgt: wardWbgt,
+      temp: wardTemp,
+      vulnerableExposure: `${vulnerableCount.toLocaleString()} At-Risk Residents (${ward.zone})`,
+      demand,
+      capacity,
+      protectionGap,
+      fulfillmentPct,
+      whyAttention,
+      recommendedAction,
+    };
+  }).sort((a, b) => b.riskScore - a.riskScore); // Highest risk ward first
 }
 
-export function getMunicipalSummary(): MunicipalSummary {
-  const wards = getMunicipalWards();
+export function getMunicipalSummary(
+  weather?: WeatherCurrent,
+  forecast?: WeatherDailyForecast[],
+  assets?: CivicProtectionAssetRow[],
+  demographics?: WardDemographicsRow[],
+  cityFilter?: string
+): MunicipalSummary {
+  const wards = getMunicipalWards(weather, assets, demographics, cityFilter);
   const highRiskWards = wards.filter((w) => w.riskLevel === 'High' || w.riskLevel === 'Critical');
   const totalGap = wards.reduce((acc, w) => acc + w.protectionGap, 0);
   const totalDemand = wards.reduce((acc, w) => acc + w.demand, 0);
   const totalCapacity = wards.reduce((acc, w) => acc + w.capacity, 0);
-  const priorityWard = wards[0]; // Ward 21: Kasba Peth
+  const priorityWard = wards[0] || getMunicipalWards()[0];
 
-  return {
-    cityName: 'Pune Municipal Corporation (PMC)',
-    department: 'Disaster Management & Heat Action Cell',
-    dateTime: new Date().toLocaleDateString('en-IN', {
+  const now = new Date();
+  const dateTimeStr =
+    now.toLocaleDateString('en-IN', {
       weekday: 'long',
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-    }) + ' • ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
-    dataStatus: 'MODELLED',
-    currentHeatRisk: 'High',
-    currentRiskScore: 73,
+    }) +
+    ' • ' +
+    now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  // Derive 5-day outlook directly from actual forecast
+  const fiveDayOutlook = (forecast && forecast.length >= 5 ? forecast.slice(0, 5) : []).map((f, idx) => ({
+    day: idx === 0 ? 'Today' : idx === 1 ? 'Tomorrow' : f.dayName,
+    date: idx === 0 ? 'Current' : `+${idx} Day${idx > 1 ? 's' : ''}`,
+    tempMax: f.tempMax,
+    riskLevel: (f.riskLevel === 'Extreme' ? 'Critical' : f.riskLevel) as 'Critical' | 'High' | 'Developing' | 'Normal',
+  }));
+
+  const currentHeatRisk = priorityWard.riskLevel;
+  const currentRiskScore = priorityWard.riskScore;
+
+  const currentAlert: MunicipalSummary['currentAlert'] = {
+    title: `${priorityWard.name.toUpperCase()} — ${currentHeatRisk.toUpperCase()} HUMAN HEAT RISK`,
+    subtitle: `Thermal stress (WBGT ${priorityWard.wbgt}°C) with a ${priorityWard.protectionGap.toLocaleString()} citizen protection gap.`,
+    recommendation: priorityWard.recommendedAction,
+    severity: currentHeatRisk === 'Critical' ? 'Critical' : currentHeatRisk === 'High' ? 'High' : 'Developing',
+  };
+
+  const cityName = cityFilter && cityFilter !== 'All'
+    ? `${cityFilter} Municipal Corporation`
+    : 'Maharashtra & National Municipal Grid';
+
+  return {
+    cityName,
+    department: 'Disaster Management & Heat Action Cell',
+    dateTime: dateTimeStr,
+    dataStatus: weather?.source === 'LIVE' ? 'LIVE' : 'MODELLED',
+    currentHeatRisk,
+    currentRiskScore,
     highRiskWardsCount: highRiskWards.length,
     totalWardsCount: wards.length,
     totalProtectionGap: totalGap,
     totalDemand,
     totalCapacity,
     priorityWard,
-    priorityAction: 'Deploy mobile cooling tankers & extend shelter hours in Ward 21 (Kasba Peth).',
-    fiveDayOutlook: [
-      { day: 'Today', date: 'Current', tempMax: 38.5, riskLevel: 'High' },
-      { day: 'Tomorrow', date: '+1 Day', tempMax: 39.4, riskLevel: 'Critical' },
-      { day: 'Day 3', date: '+2 Days', tempMax: 40.1, riskLevel: 'Critical' },
-      { day: 'Day 4', date: '+3 Days', tempMax: 38.8, riskLevel: 'High' },
-      { day: 'Day 5', date: '+4 Days', tempMax: 36.9, riskLevel: 'Developing' },
-    ],
-    currentAlert: {
-      title: 'WARD 21 — CRITICAL HUMAN HEAT RISK',
-      subtitle: 'Severe thermal stress (WBGT 31.8°C) combined with a 4,380 person protection gap.',
-      recommendation: 'Deploy emergency mist-cooling tankers to Mandai Bazaar and extend civic cooling center hours until 9:00 PM.',
-      severity: 'Critical',
-    },
+    priorityAction: `Deploy emergency protection assets & extend shelter hours in ${priorityWard.name}.`,
+    fiveDayOutlook:
+      fiveDayOutlook.length >= 5
+        ? fiveDayOutlook
+        : [
+            { day: 'Today', date: 'Current', tempMax: weather?.temp ?? 32.0, riskLevel: currentHeatRisk },
+            { day: 'Tomorrow', date: '+1 Day', tempMax: (weather?.temp ?? 32.0) + 0.8, riskLevel: currentHeatRisk },
+            { day: 'Day 3', date: '+2 Days', tempMax: (weather?.temp ?? 32.0) + 1.2, riskLevel: currentHeatRisk },
+            { day: 'Day 4', date: '+3 Days', tempMax: (weather?.temp ?? 32.0) + 0.5, riskLevel: currentHeatRisk },
+            { day: 'Day 5', date: '+4 Days', tempMax: (weather?.temp ?? 32.0) - 0.5, riskLevel: 'Developing' },
+          ],
+    currentAlert,
   };
 }
+
+import { supabase } from './supabase.js';
 
 let actionsStore: MunicipalActionItem[] = [
   {
@@ -288,17 +227,54 @@ let actionsStore: MunicipalActionItem[] = [
   },
 ];
 
-export function getMunicipalActions(): MunicipalActionItem[] {
+export async function getMunicipalActions(): Promise<MunicipalActionItem[]> {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('municipal_action_queue')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        return data.map((d: any) => ({
+          id: d.id,
+          priority: d.priority,
+          ward: d.ward_display_name,
+          wardId: d.ward_id,
+          action: d.action_title,
+          time: d.time_window_display || d.time_window,
+          reason: d.rationale,
+          status: d.status,
+        }));
+      }
+    } catch (err) {
+      console.warn('[Supabase] Failed to fetch municipal actions, using fallback store:', err);
+    }
+  }
   return actionsStore;
 }
 
-export function updateMunicipalActionStatus(id: string, status: MunicipalActionItem['status']): MunicipalActionItem | null {
+export async function updateMunicipalActionStatus(
+  id: string,
+  status: MunicipalActionItem['status']
+): Promise<MunicipalActionItem | null> {
   const item = actionsStore.find((a) => a.id === id);
   if (item) {
     item.status = status;
-    return item;
   }
-  return null;
+
+  if (supabase) {
+    try {
+      await supabase
+        .from('municipal_action_queue')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', id);
+    } catch (err) {
+      console.warn('[Supabase] Failed to update action status in DB:', err);
+    }
+  }
+
+  return item || null;
 }
 
 export function getProtectionResources(): ProtectionResourceItem[] {
@@ -371,16 +347,59 @@ let alertsStore: MunicipalAlertItem[] = [
   },
 ];
 
-export function getMunicipalAlertsList(): MunicipalAlertItem[] {
+export async function getMunicipalAlertsList(): Promise<MunicipalAlertItem[]> {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('municipal_alerts')
+        .select('*')
+        .order('dispatched_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        return data.map((d: any) => ({
+          id: d.id,
+          severity: d.severity,
+          what: d.what,
+          where: d.where_location,
+          when: d.when_time,
+          why: d.why_reason,
+          action: d.action_directive,
+          status: d.lifecycle_status || d.status || 'Active',
+        }));
+      }
+    } catch (err) {
+      console.warn('[Supabase] Failed to fetch municipal alerts, using fallback store:', err);
+    }
+  }
   return alertsStore;
 }
 
-export function addMunicipalAlert(alert: Omit<MunicipalAlertItem, 'id'>): MunicipalAlertItem {
+export async function addMunicipalAlert(
+  alert: Omit<MunicipalAlertItem, 'id'>
+): Promise<MunicipalAlertItem> {
   const newAlert: MunicipalAlertItem = {
     ...alert,
     id: `al-${Date.now()}`,
   };
   alertsStore.unshift(newAlert);
+
+  if (supabase) {
+    try {
+      await supabase.from('municipal_alerts').insert({
+        id: newAlert.id,
+        severity: newAlert.severity,
+        lifecycle_status: (newAlert.status as any) || 'Active',
+        what: newAlert.what,
+        where_location: newAlert.where,
+        when_time: newAlert.when,
+        why_reason: newAlert.why,
+        action_directive: newAlert.action,
+      });
+    } catch (err) {
+      console.warn('[Supabase] Failed to insert alert into DB:', err);
+    }
+  }
+
   return newAlert;
 }
 

@@ -54,20 +54,70 @@ export const InteractiveGisMap: React.FC<InteractiveGisMapProps> = ({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
 
-  // Map geographic bounding box of Pune to SVG canvas coordinates (800 x 600)
-  // Lat: ~18.47 to 18.59, Lng: ~73.78 to 73.96
-  const minLat = 18.47;
-  const maxLat = 18.59;
-  const minLng = 73.78;
-  const maxLng = 73.96;
+  const activeWard = location.allWards.find((w) => w.id === (selectedWardId || location.ward.id)) || location.ward;
+  const activeCity = activeWard.city || (activeWard.name.includes('Pune') ? 'Pune' : undefined);
+
+  // Group wards for display: Show all wards belonging to activeWard's city/cluster
+  const displayedWards = React.useMemo(() => {
+    let list: WardInfo[] = [];
+    if (activeCity) {
+      const cityWards = location.allWards.filter(
+        (w) => (w.city || '').toLowerCase() === activeCity.toLowerCase()
+      );
+      if (cityWards.length > 0) list = cityWards;
+    }
+    if (list.length === 0) {
+      // Fallback: wards within ~60km
+      const nearby = location.allWards.filter((w) => {
+        const dLat = Math.abs(w.center[0] - activeWard.center[0]);
+        const dLng = Math.abs(w.center[1] - activeWard.center[1]);
+        return dLat < 0.6 && dLng < 0.6;
+      });
+      list = nearby.length > 0 ? nearby : [activeWard];
+    }
+    // Deduplicate by ID
+    const seen = new Set<string>();
+    return list.filter((w) => {
+      if (!w?.id || seen.has(w.id)) return false;
+      seen.add(w.id);
+      return true;
+    });
+  }, [activeWard, activeCity, location.allWards]);
+
+  // Compute dynamic bounding box for SVG projection
+  const { minLat, maxLat, minLng, maxLng } = React.useMemo(() => {
+    const lats = displayedWards.flatMap((w) => [w.center[0], ...w.bounds.map((b) => b[0])]);
+    const lngs = displayedWards.flatMap((w) => [w.center[1], ...w.bounds.map((b) => b[1])]);
+
+    // Also include current GPS if nearby
+    if (Math.abs(location.lat - activeWard.center[0]) < 0.4 && Math.abs(location.lng - activeWard.center[1]) < 0.4) {
+      lats.push(location.lat);
+      lngs.push(location.lng);
+    }
+
+    const rawMinLat = Math.min(...lats);
+    const rawMaxLat = Math.max(...lats);
+    const rawMinLng = Math.min(...lngs);
+    const rawMaxLng = Math.max(...lngs);
+
+    const latSpan = Math.max(0.04, rawMaxLat - rawMinLat);
+    const lngSpan = Math.max(0.04, rawMaxLng - rawMinLng);
+
+    return {
+      minLat: rawMinLat - latSpan * 0.14,
+      maxLat: rawMaxLat + latSpan * 0.14,
+      minLng: rawMinLng - lngSpan * 0.14,
+      maxLng: rawMaxLng + lngSpan * 0.14,
+    };
+  }, [displayedWards, location.lat, location.lng, activeWard]);
 
   const geoToSvg = (lat: number, lng: number): [number, number] => {
-    const clampedLng = Math.max(minLng + 0.008, Math.min(maxLng - 0.008, lng));
-    const clampedLat = Math.max(minLat + 0.008, Math.min(maxLat - 0.008, lat));
-    const x = ((clampedLng - minLng) / (maxLng - minLng)) * 800;
+    const clampedLng = Math.max(minLng, Math.min(maxLng, lng));
+    const clampedLat = Math.max(minLat, Math.min(maxLat, lat));
+    const x = ((clampedLng - minLng) / (maxLng - minLng || 0.01)) * 800;
     // Invert Y because SVG coordinates grow downwards
-    const y = ((maxLat - clampedLat) / (maxLat - minLat)) * 600;
-    return [x, y];
+    const y = ((maxLat - clampedLat) / (maxLat - minLat || 0.01)) * 600;
+    return [Math.round(x * 10) / 10, Math.round(y * 10) / 10];
   };
 
   const getWardColor = (ward: WardInfo): { fill: string; stroke: string; label: string } => {
@@ -106,7 +156,6 @@ export const InteractiveGisMap: React.FC<InteractiveGisMapProps> = ({
   };
 
   const currentGpsSvg = geoToSvg(location.lat, location.lng);
-  const activeWard = location.allWards.find((w) => w.id === (selectedWardId || location.ward.id)) || location.ward;
 
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-[#F0F2F5] border border-black/5 shadow-inner ${heightClass} flex flex-col`}>
@@ -193,27 +242,71 @@ export const InteractiveGisMap: React.FC<InteractiveGisMapProps> = ({
           <rect width="800" height="600" fill="#F8FAFC" />
           <rect width="800" height="600" fill="url(#grid)" />
 
-          {/* Mutha & Mula Rivers (Iconic Pune landmark) */}
-          <path
-            d="M 120 480 Q 250 420 380 340 T 480 250 T 640 220 T 780 200"
-            fill="none"
-            stroke="url(#riverGrad)"
-            strokeWidth="14"
-            strokeLinecap="round"
-          />
-          <path
-            d="M 380 340 Q 420 180 500 120 T 620 90"
-            fill="none"
-            stroke="url(#riverGrad)"
-            strokeWidth="10"
-            strokeLinecap="round"
-          />
-          <text x="360" y="325" fill="#3B82F6" fontSize="11" fontWeight="600" opacity="0.7">
-            Mutha River Greenway (-3.5°C)
-          </text>
+          {/* Regional Waterways & Natural Cooling Features */}
+          {activeCity === 'Pune' && (
+            <g>
+              <path
+                d="M 120 480 Q 250 420 380 340 T 480 250 T 640 220 T 780 200"
+                fill="none"
+                stroke="url(#riverGrad)"
+                strokeWidth="14"
+                strokeLinecap="round"
+              />
+              <path
+                d="M 380 340 Q 420 180 500 120 T 620 90"
+                fill="none"
+                stroke="url(#riverGrad)"
+                strokeWidth="10"
+                strokeLinecap="round"
+              />
+              <text x="360" y="325" fill="#3B82F6" fontSize="11" fontWeight="600" opacity="0.7">
+                Mutha River Greenway (-3.5°C)
+              </text>
+            </g>
+          )}
+
+          {activeCity === 'Mumbai' && (
+            <g>
+              {/* Western Coastal Strip */}
+              <path
+                d="M 60 50 Q 80 250 70 420 T 90 580"
+                fill="none"
+                stroke="url(#riverGrad)"
+                strokeWidth="20"
+                strokeLinecap="round"
+              />
+              {/* Mithi River & Mahim Creek */}
+              <path
+                d="M 620 160 Q 420 280 240 330 T 70 420"
+                fill="none"
+                stroke="url(#riverGrad)"
+                strokeWidth="10"
+                strokeLinecap="round"
+              />
+              <text x="100" y="240" fill="#3B82F6" fontSize="11" fontWeight="600" opacity="0.7">
+                Arabian Sea Marine Inflow (-4.0°C)
+              </text>
+            </g>
+          )}
+
+          {activeCity === 'Delhi NCR' && (
+            <g>
+              {/* Yamuna River Corridor */}
+              <path
+                d="M 520 40 Q 510 200 480 380 T 560 580"
+                fill="none"
+                stroke="url(#riverGrad)"
+                strokeWidth="16"
+                strokeLinecap="round"
+              />
+              <text x="490" y="280" fill="#3B82F6" fontSize="11" fontWeight="600" opacity="0.7">
+                Yamuna River Ecological Belt (-3.2°C)
+              </text>
+            </g>
+          )}
 
           {/* Wards polygons */}
-          {location.allWards.map((ward) => {
+          {displayedWards.map((ward) => {
             const isSelected = ward.id === activeWard.id;
             const isHovered = hoveredWard?.id === ward.id;
             const { fill, stroke } = getWardColor(ward);

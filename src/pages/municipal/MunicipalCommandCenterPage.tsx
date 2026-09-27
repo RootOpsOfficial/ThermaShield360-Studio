@@ -37,7 +37,7 @@ export const MunicipalCommandCenterPage: React.FC = () => {
       <div className="flex flex-col items-center justify-center min-h-[460px] text-slate-500 text-sm gap-3">
         <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
         <p className="font-bold text-slate-700 text-base">Connecting to Municipal Command Center Feed...</p>
-        <p className="text-xs text-slate-400">Loading Pune Municipal Corporation heat risk telemetry</p>
+        <p className="text-xs text-slate-400">Loading Municipal Corporation heat risk telemetry</p>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export const MunicipalCommandCenterPage: React.FC = () => {
             City Heat Risk • Protection • Response
           </p>
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-medium mt-1">
-            <span className="text-slate-600 font-semibold">{summary.cityName || 'Pune Municipal Corporation'}</span>
+            <span className="text-slate-600 font-semibold">{summary.cityName || 'Municipal Corporation'}</span>
             <span>•</span>
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3 text-slate-400" />

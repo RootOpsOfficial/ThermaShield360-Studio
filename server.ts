@@ -1,9 +1,41 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { PUNE_WARDS, resolveWardByCoords, PROTECTION_POINTS, HEALTHCARE_FACILITIES, calculateDistanceKm, PUNE_LANDMARKS } from './src/server/geoData.js';
+import { checkSupabaseHealth } from './src/server/db.js';
+import {
+  getWards,
+  getWardById,
+  getWardDemographics,
+  getProtectionAssets,
+  getProtectionPointsForCitizen,
+  getHealthcareFacilities,
+  getActiveMunicipalAlerts,
+  getWeatherObservations,
+  getWeatherForecasts,
+  getWardRiskSnapshots,
+  saveWardRiskSnapshots,
+} from './src/server/databaseService.js';
+import {
+  ALL_REGIONAL_WARDS,
+  MAHARASHTRA_WARDS,
+  NATIONAL_WARDS,
+  PUNE_WARDS,
+  resolveWardByCoords,
+  PROTECTION_POINTS,
+  HEALTHCARE_FACILITIES,
+  calculateDistanceKm,
+  PUNE_LANDMARKS,
+  REGIONAL_LANDMARKS,
+} from './src/server/geoData.js';
+import { reverseGeocodeGoogle, searchAddressGoogle } from './src/server/googleGeocodingService.js';
+import { fetchNearbyProtectionPlaces } from './src/server/googlePlacesService.js';
+import { computeThermalSafeRoutesGoogle } from './src/server/googleRoutesService.js';
 import { calculateWBGT, calculateUTCI, calculateHeatIndex, categorizeThermalStress, calculateCompositeRiskScore, getThermalCitizenExplanation } from './src/server/thermalEngine.js';
 import { fetchWeatherData } from './src/server/weatherService.js';
+import { evaluateHumanHeatImpact } from './src/server/humanImpactEngine.js';
 import { generateRoutes } from './src/server/routingEngine.js';
 import { getAdaptiveRecommendations, getCitizenAlerts, getCitizenAlertHistory } from './src/server/intelligenceEngine.js';
 import { generateLongRangeEarlyWarning } from './src/server/longRangeEarlyWarning.js';
@@ -51,122 +83,161 @@ function parseCoords(req: Request): { lat: number; lng: number } {
   return { lat, lng };
 }
 
-// Resolve location or ward according to query parameters and coordinates
-function resolveLocationOrWard(
+// Resolve location or ward using real Google Geocoding API with nationwide coverage
+async function resolveLocationOrWard(
   req: Request,
   lat: number,
   lng: number
-): { ward: WardInfo; city: string; state: string } {
+): Promise<{ ward: WardInfo; city: string; state: string; formattedAddress: string }> {
   const customName = (req.query.name as string) || (req.query.location as string);
-  const isPuneArea = lat >= 18.35 && lat <= 18.7 && lng >= 73.65 && lng <= 74.1;
+  const matchedWard = resolveWardByCoords(lat, lng);
+  const distKm = calculateDistanceKm(lat, lng, matchedWard.center[0], matchedWard.center[1]);
 
-  if (customName && customName.trim()) {
-    const trimmed = customName.trim();
-    // Check if it matches an existing Pune ward
-    const existingWard = PUNE_WARDS.find(
-      (w) =>
-        w.name.toLowerCase() === trimmed.toLowerCase() ||
-        trimmed.toLowerCase().includes(w.name.toLowerCase().split(':')[0]) ||
-        w.name.toLowerCase().includes(trimmed.toLowerCase().split(',')[0])
-    );
-    if (existingWard && (trimmed.toLowerCase().includes('ward ') || isPuneArea)) {
-      return { ward: existingWard, city: 'Pune', state: 'Maharashtra' };
+  // If directly within or very close to one of the modeled regional wards
+  if (distKm <= 8) {
+    const wardToUse = customName && customName.trim()
+      ? { ...matchedWard, name: customName.trim() }
+      : matchedWard;
+    return {
+      ward: wardToUse,
+      city: matchedWard.city || 'Urban District',
+      state: matchedWard.state || 'Maharashtra',
+      formattedAddress: `${wardToUse.name}, ${matchedWard.city || ''}, ${matchedWard.state || 'India'}`.replace(', ,', ','),
+    };
+  }
+
+  const geocoded = await reverseGeocodeGoogle(lat, lng);
+
+  const city = geocoded.locality || (customName ? customName.split(',')[0].trim() : (matchedWard.city || 'Local Area'));
+  const state = geocoded.administrativeArea || matchedWard.state || 'Maharashtra';
+  const name = customName && customName.trim() ? customName.trim() : geocoded.displayName;
+
+  const delta = 0.015;
+  const wardBounds: [number, number][] = geocoded.bounds
+    ? [
+        [geocoded.bounds.northeast.lat, geocoded.bounds.southwest.lng],
+        [geocoded.bounds.northeast.lat, geocoded.bounds.northeast.lng],
+        [geocoded.bounds.southwest.lat, geocoded.bounds.northeast.lng],
+        [geocoded.bounds.southwest.lat, geocoded.bounds.southwest.lng],
+        [geocoded.bounds.northeast.lat, geocoded.bounds.southwest.lng],
+      ]
+    : matchedWard.bounds;
+
+  const ward: WardInfo = {
+    id: `loc-${lat.toFixed(4)}-${lng.toFixed(4)}`,
+    name,
+    zone: geocoded.sublocality || geocoded.neighborhood || matchedWard.zone || 'Urban District',
+    city,
+    state,
+    regionType: (state.toLowerCase().includes('maharashtra') ? 'Maharashtra' : 'National') as any,
+    center: [lat, lng],
+    bounds: wardBounds,
+    population: matchedWard.population || 145000,
+    vulnerableCount: matchedWard.vulnerableCount || 29000,
+    treeCanopyPct: matchedWard.treeCanopyPct || 28,
+    builtDensityPct: matchedWard.builtDensityPct || 72,
+    vulnerabilityIndex: matchedWard.vulnerabilityIndex || 58,
+    uhiOffsetDegC: matchedWard.uhiOffsetDegC || 1.8,
+    highRiskAreas: matchedWard.highRiskAreas || ['Unshaded Transit Arterials', 'Paved Commercial Corridors'],
+    lowRiskAreas: matchedWard.lowRiskAreas || ['Canopy Shaded Parks', 'Civic Green Spaces'],
+  };
+
+  return { ward, city, state, formattedAddress: geocoded.formattedAddress };
+}
+
+// Dedicated API: GET /api/citizen/heat-impact — Human Heat Impact Engine Endpoint
+app.get('/api/citizen/heat-impact', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const { ward } = await resolveLocationOrWard(req, lat, lng);
+    const weather = await fetchWeatherData(lat, lng);
+    const current = weather.current;
+
+    const activityType = (req.query.activityType as string) || 'Walking / Commuting';
+    const outdoorExposure = req.query.outdoorExposure !== undefined
+      ? req.query.outdoorExposure === 'true'
+      : undefined;
+    const exposureDuration = (req.query.exposureDuration as string) || (outdoorExposure ? '1-2 hours' : '< 30 mins');
+    const ageGroup = (req.query.ageGroup as string) || 'Adult (18-64)';
+    const hasHealthCondition = req.query.hasHealthCondition === 'true';
+    const isOutdoorWorker = req.query.isOutdoorWorker === 'true';
+
+    // Query real nearby protection places via Google Places API (New)
+    const realPlaces = await fetchNearbyProtectionPlaces(lat, lng, 3000);
+
+    const nearbyCooling = realPlaces.filter((p) => p.category === 'COOLING_CENTER').length;
+    const nearbyWater = realPlaces.filter((p) => p.category === 'WATER_POINT').length;
+    const nearbyShade = realPlaces.filter((p) => p.category === 'SHADE_CANOPY').length;
+
+    // Optional destination comparison
+    let destinationContext: any = undefined;
+    const destLatStr = req.query.destinationLat as string;
+    const destLngStr = req.query.destinationLng as string;
+    const destName = (req.query.destinationName as string) || 'Destination';
+
+    if (destLatStr && destLngStr) {
+      const destLat = parseFloat(destLatStr);
+      const destLng = parseFloat(destLngStr);
+      if (!isNaN(destLat) && !isNaN(destLng)) {
+        const destWeather = await fetchWeatherData(destLat, destLng);
+        const { ward: destWard } = await resolveLocationOrWard(req, destLat, destLng);
+        const destPlaces = await fetchNearbyProtectionPlaces(destLat, destLng, 3000);
+        const destCooling = destPlaces.filter((p) => p.category === 'COOLING_CENTER').length;
+        const destWater = destPlaces.filter((p) => p.category === 'WATER_POINT').length;
+
+        destinationContext = {
+          name: destName,
+          temp: destWeather.current.temp,
+          humidity: destWeather.current.humidity,
+          windSpeedKmH: destWeather.current.windSpeed,
+          solarRadiation: destWeather.current.solarIrradiance,
+          ward: destWard,
+          nearbyCoolingCount: destCooling,
+          nearbyWaterCount: destWater,
+        };
+      }
     }
 
-    const parts = trimmed.split(',');
-    const cityName = parts[0].replace(/^Ward \d+:\s*/i, '').trim();
-    const stateName = parts[1] ? parts[1].trim() : 'India';
+    const impact = evaluateHumanHeatImpact({
+      currentTemp: current.temp,
+      humidity: current.humidity,
+      windSpeedKmH: current.windSpeed,
+      solarRadiation: current.solarIrradiance,
+      uvIndex: current.uvIndex,
+      ward,
+      activityType,
+      outdoorExposure,
+      exposureDuration,
+      ageGroup,
+      hasHealthCondition,
+      isOutdoorWorker,
+      nearbyCoolingCount: nearbyCooling,
+      nearbyWaterCount: nearbyWater,
+      nearbyShadeCount: nearbyShade,
+      destinationContext,
+    });
 
-    const customWard: WardInfo = {
-      id: `loc-${lat.toFixed(4)}-${lng.toFixed(4)}`,
-      name: trimmed,
-      zone: 'Active Location',
-      center: [lat, lng],
-      bounds: [
-        [lat - 0.05, lng - 0.05],
-        [lat + 0.05, lng - 0.05],
-        [lat + 0.05, lng + 0.05],
-        [lat - 0.05, lng + 0.05],
-        [lat - 0.05, lng - 0.05],
-      ],
-      population: 150000,
-      vulnerableCount: 30000,
-      treeCanopyPct: 26,
-      builtDensityPct: 74,
-      vulnerabilityIndex: 62,
-      uhiOffsetDegC: 1.9,
-      highRiskAreas: ['Central Transit Hub', 'Commercial Corridors', 'Unshaded Markets'],
-      lowRiskAreas: ['Civic Garden & Shaded Canopy', 'Green Buffer Zone'],
-    };
-    return { ward: customWard, city: cityName, state: stateName };
+    res.json(impact);
+  } catch (err: any) {
+    console.error('Error in /api/citizen/heat-impact:', err);
+    res.status(500).json({ error: err?.message || 'Failed to evaluate human heat impact' });
   }
-
-  if (!isPuneArea) {
-    const knownCity =
-      Math.abs(lat - 19.076) < 0.3 && Math.abs(lng - 72.877) < 0.3
-        ? 'Mumbai, Maharashtra'
-        : Math.abs(lat - 21.1458) < 0.3 && Math.abs(lng - 79.0882) < 0.3
-        ? 'Nagpur, Maharashtra'
-        : Math.abs(lat - 19.9975) < 0.3 && Math.abs(lng - 73.7898) < 0.3
-        ? 'Nashik, Maharashtra'
-        : Math.abs(lat - 28.6139) < 0.3 && Math.abs(lng - 77.209) < 0.3
-        ? 'New Delhi, Delhi NCR'
-        : Math.abs(lat - 12.9716) < 0.3 && Math.abs(lng - 77.5946) < 0.3
-        ? 'Bengaluru, Karnataka'
-        : Math.abs(lat - 17.385) < 0.3 && Math.abs(lng - 78.4867) < 0.3
-        ? 'Hyderabad, Telangana'
-        : Math.abs(lat - 23.0225) < 0.3 && Math.abs(lng - 72.5714) < 0.3
-        ? 'Ahmedabad, Gujarat'
-        : Math.abs(lat - 13.0827) < 0.3 && Math.abs(lng - 80.2707) < 0.3
-        ? 'Chennai, Tamil Nadu'
-        : Math.abs(lat - 22.5726) < 0.3 && Math.abs(lng - 88.3639) < 0.3
-        ? 'Kolkata, West Bengal'
-        : Math.abs(lat - 26.9124) < 0.3 && Math.abs(lng - 75.7873) < 0.3
-        ? 'Jaipur, Rajasthan'
-        : `Location (${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E)`;
-
-    const parts = knownCity.split(',');
-    const customWard: WardInfo = {
-      id: `loc-${lat.toFixed(4)}-${lng.toFixed(4)}`,
-      name: knownCity,
-      zone: 'Active Location',
-      center: [lat, lng],
-      bounds: [
-        [lat - 0.05, lng - 0.05],
-        [lat + 0.05, lng - 0.05],
-        [lat + 0.05, lng + 0.05],
-        [lat - 0.05, lng + 0.05],
-        [lat - 0.05, lng - 0.05],
-      ],
-      population: 180000,
-      vulnerableCount: 36000,
-      treeCanopyPct: 24,
-      builtDensityPct: 76,
-      vulnerabilityIndex: 65,
-      uhiOffsetDegC: 2.1,
-      highRiskAreas: ['Commercial Street Spine', 'Major Transit Terminus'],
-      lowRiskAreas: ['Canopy Shaded Avenues', 'Public Lake Greenway'],
-    };
-    return { ward: customWard, city: parts[0].trim(), state: parts[1]?.trim() || 'India' };
-  }
-
-  const ward = resolveWardByCoords(lat, lng);
-  return { ward, city: 'Pune', state: 'Maharashtra' };
-}
+});
 
 // Dedicated API: GET /api/citizen/heat-risk — ONLY data required for My Heat Risk feature
 app.get('/api/citizen/heat-risk', async (req: Request, res: Response) => {
   try {
     const { lat, lng } = parseCoords(req);
-    const { ward, city, state } = resolveLocationOrWard(req, lat, lng);
+    const { ward, city, state } = await resolveLocationOrWard(req, lat, lng);
     const weather = await fetchWeatherData(lat, lng);
     const current = weather.current;
     const now = new Date();
     const currentHour = now.getHours();
 
-    // 1. Calculate thermal indices with shared engine
-    const wbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, current.windSpeed);
-    const utci = calculateUTCI(current.temp, current.humidity, current.windSpeed, current.solarIrradiance);
+    // 1. Calculate thermal indices with shared engine (converting windSpeed km/h to m/s)
+    const windMs = current.windSpeed / 3.6;
+    const wbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, windMs);
+    const utci = calculateUTCI(current.temp, current.humidity, windMs, current.solarIrradiance);
 
     // 2. Personal profile modifiers
     const isOutdoorWorker = req.query.isOutdoorWorker === 'true';
@@ -212,8 +283,8 @@ app.get('/api/citizen/heat-risk', async (req: Request, res: Response) => {
       const hourlySolar = Math.round(current.solarIrradiance * Math.max(0, solarRatio));
       const hTemp = Math.round((current.temp + tempDelta) * 10) / 10;
       const hHumidity = Math.round(Math.max(25, Math.min(85, current.humidity - tempDelta * 2.5)));
-      const hWbgt = calculateWBGT(hTemp, hHumidity, hourlySolar, current.windSpeed);
-      const hUtci = calculateUTCI(hTemp, hHumidity, current.windSpeed, hourlySolar);
+      const hWbgt = calculateWBGT(hTemp, hHumidity, hourlySolar, windMs);
+      const hUtci = calculateUTCI(hTemp, hHumidity, windMs, hourlySolar);
       const hComposite = calculateCompositeRiskScore(hWbgt, hUtci, vulnerabilityScore, h, ward.uhiOffsetDegC);
 
       const period = h < 12 ? 'AM' : 'PM';
@@ -347,6 +418,87 @@ app.get('/api/citizen/heat-risk', async (req: Request, res: Response) => {
     const confidence = 'High Confidence · Verified ground station & high-resolution model consensus';
     const lastUpdated = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
+    // Personal Heat Impact Engine integration
+    const activityType = (req.query.activityType as string) || (isOutdoorWorker ? 'Outdoor Construction' : 'Walking / Commuting');
+    const outdoorExposure = req.query.outdoorExposure !== undefined ? req.query.outdoorExposure === 'true' : isOutdoorWorker;
+    const exposureDuration = (req.query.exposureDuration as string) || (outdoorExposure ? '1-2 hours' : '< 30 mins');
+
+    let nearbyAssets: any[] = [];
+    try {
+      nearbyAssets = await getProtectionAssets({ activeOnly: true });
+    } catch {
+      nearbyAssets = [];
+    }
+
+    const nearbyCooling = nearbyAssets.filter((a) => {
+      const d = calculateDistanceKm(lat, lng, a.lat, a.lng);
+      return d <= 2.5 && (a.asset_type === 'cooling_centre' || a.has_active_cooling);
+    }).length;
+
+    const nearbyWater = nearbyAssets.filter((a) => {
+      const d = calculateDistanceKm(lat, lng, a.lat, a.lng);
+      return d <= 1.5 && (a.asset_type === 'water_kiosk' || a.has_potable_drinking_water);
+    }).length;
+
+    const nearbyShade = nearbyAssets.filter((a) => {
+      const d = calculateDistanceKm(lat, lng, a.lat, a.lng);
+      return d <= 2.0 && (a.asset_type === 'shade_structure' || a.asset_type === 'park_greenspace');
+    }).length;
+
+    // Optional destination comparison
+    let destinationContext: any = undefined;
+    const destLatStr = req.query.destinationLat as string;
+    const destLngStr = req.query.destinationLng as string;
+    const destName = (req.query.destinationName as string) || 'Destination';
+
+    if (destLatStr && destLngStr) {
+      const destLat = parseFloat(destLatStr);
+      const destLng = parseFloat(destLngStr);
+      if (!isNaN(destLat) && !isNaN(destLng)) {
+        try {
+          const destWeather = await fetchWeatherData(destLat, destLng);
+          const { ward: destWard } = await resolveLocationOrWard(req, destLat, destLng);
+          const destPlaces = await fetchNearbyProtectionPlaces(destLat, destLng, 2500);
+          const destCooling = destPlaces.filter((p) => p.category === 'COOLING_CENTER').length;
+          const destWater = destPlaces.filter((p) => p.category === 'WATER_POINT').length;
+
+          destinationContext = {
+            name: destName,
+            temp: destWeather.current.temp,
+            humidity: destWeather.current.humidity,
+            windSpeedKmH: destWeather.current.windSpeed,
+            solarRadiation: destWeather.current.solarIrradiance,
+            ward: destWard,
+            nearbyCoolingCount: destCooling,
+            nearbyWaterCount: destWater,
+          };
+        } catch (e) {
+          console.warn('Could not resolve destination weather in heat-risk:', e);
+        }
+      }
+    }
+
+    const personalImpact = evaluateHumanHeatImpact({
+      currentTemp: current.temp,
+      humidity: current.humidity,
+      windSpeedKmH: current.windSpeed,
+      solarRadiation: current.solarIrradiance,
+      uvIndex: current.uvIndex,
+      wbgt,
+      utci,
+      ward,
+      activityType,
+      outdoorExposure,
+      exposureDuration,
+      ageGroup,
+      hasHealthCondition,
+      isOutdoorWorker,
+      nearbyCoolingCount: nearbyCooling,
+      nearbyWaterCount: nearbyWater,
+      nearbyShadeCount: nearbyShade,
+      destinationContext,
+    });
+
     const payload: CitizenHeatRiskResponse = {
       location: {
         lat,
@@ -372,6 +524,7 @@ app.get('/api/citizen/heat-risk', async (req: Request, res: Response) => {
       dataStatus,
       confidence,
       lastUpdated,
+      personalImpact,
     };
 
     res.json(payload);
@@ -392,58 +545,48 @@ app.get('/api/citizen/local-risk-map', async (req: Request, res: Response) => {
       (req.query.lon as string) || (req.query.lng as string) || (req.query.longitude as string) || '73.8567'
     );
 
-    const { ward: currentWard, city, state } = resolveLocationOrWard(req, lat, lon);
+    const { ward: currentWard, city, state } = await resolveLocationOrWard(req, lat, lon);
     const weather = await fetchWeatherData(lat, lon);
     const current = weather.current;
     const now = new Date();
     const currentHour = now.getHours();
 
-    const distToPune = calculateDistanceKm(lat, lon, 18.5204, 73.8567);
+    // Contiguous municipal sectors around user's real geocoded GPS
+    const sectorOffsets = [
+      { idSuffix: 'core', name: `${currentWard.name} (Core)`, zone: currentWard.zone, dLat: 0, dLon: 0, vuln: currentWard.vulnerabilityIndex, uhi: currentWard.uhiOffsetDegC, built: currentWard.builtDensityPct, canopy: currentWard.treeCanopyPct },
+      { idSuffix: 'north', name: `${city} North Green Buffer`, zone: 'North Sector', dLat: 0.022, dLon: 0.005, vuln: 46, uhi: 1.2, built: 54, canopy: 38 },
+      { idSuffix: 'east', name: `${city} East Commercial Transit`, zone: 'East Sector', dLat: 0.006, dLon: 0.025, vuln: 74, uhi: 2.7, built: 85, canopy: 12 },
+      { idSuffix: 'south', name: `${city} South Residential`, zone: 'South Sector', dLat: -0.021, dLon: 0.012, vuln: 62, uhi: 2.1, built: 72, canopy: 24 },
+      { idSuffix: 'west', name: `${city} West Botanical Promenade`, zone: 'West Sector', dLat: -0.008, dLon: -0.024, vuln: 34, uhi: 0.8, built: 40, canopy: 48 },
+      { idSuffix: 'nw', name: `${city} Northwest Campus`, zone: 'Northwest Sector', dLat: 0.019, dLon: -0.021, vuln: 42, uhi: 1.3, built: 52, canopy: 36 },
+    ];
 
-    // If within 55km of Pune, use authoritative PUNE_WARDS
-    // Otherwise, generate realistic administrative sector polygons surrounding the user's real GPS coordinates
-    let wardsList: WardInfo[] = [];
-
-    if (distToPune <= 55) {
-      wardsList = PUNE_WARDS;
-    } else {
-      // Contiguous municipal sectors around user's GPS
-      const sectorOffsets = [
-        { idSuffix: 'core', name: `${city} Central Urban Core`, zone: 'Central Zone', dLat: 0, dLon: 0, vuln: 68, uhi: 2.2, built: 78, canopy: 18 },
-        { idSuffix: 'north', name: `${city} North Residential Sector`, zone: 'North Zone', dLat: 0.022, dLon: 0.005, vuln: 48, uhi: 1.4, built: 58, canopy: 32 },
-        { idSuffix: 'east', name: `${city} East Commercial Corridor`, zone: 'East Zone', dLat: 0.006, dLon: 0.025, vuln: 74, uhi: 2.8, built: 84, canopy: 12 },
-        { idSuffix: 'south', name: `${city} South Transit & Industrial`, zone: 'South Zone', dLat: -0.021, dLon: 0.012, vuln: 70, uhi: 2.5, built: 80, canopy: 15 },
-        { idSuffix: 'west', name: `${city} West Green Belt & Hillside`, zone: 'West Zone', dLat: -0.008, dLon: -0.024, vuln: 32, uhi: 0.7, built: 42, canopy: 48 },
-        { idSuffix: 'nw', name: `${city} Northwest Campus & Suburban`, zone: 'Northwest Zone', dLat: 0.019, dLon: -0.021, vuln: 40, uhi: 1.1, built: 50, canopy: 38 },
-      ];
-
-      wardsList = sectorOffsets.map((s) => {
-        const cLat = lat + s.dLat;
-        const cLon = lon + s.dLon;
-        const delta = 0.014;
-        return {
-          id: `sector-${s.idSuffix}-${lat.toFixed(3)}-${lon.toFixed(3)}`,
-          name: s.name,
-          zone: s.zone,
-          center: [cLat, cLon],
-          bounds: [
-            [cLat - delta, cLon - delta],
-            [cLat + delta, cLon - delta],
-            [cLat + delta, cLon + delta],
-            [cLat - delta, cLon + delta],
-            [cLat - delta, cLon - delta],
-          ],
-          population: 140000,
-          vulnerableCount: 28000,
-          treeCanopyPct: s.canopy,
-          builtDensityPct: s.built,
-          vulnerabilityIndex: s.vuln,
-          uhiOffsetDegC: s.uhi,
-          highRiskAreas: ['Unshaded Transit Spine', 'Paved Market Square'],
-          lowRiskAreas: ['Canopy Shaded Parks', 'Municipal Green Corridor'],
-        };
-      });
-    }
+    const wardsList: WardInfo[] = sectorOffsets.map((s) => {
+      const cLat = lat + s.dLat;
+      const cLon = lon + s.dLon;
+      const delta = 0.014;
+      return {
+        id: `sector-${s.idSuffix}-${lat.toFixed(3)}-${lon.toFixed(3)}`,
+        name: s.name,
+        zone: s.zone,
+        center: [cLat, cLon],
+        bounds: [
+          [cLat - delta, cLon - delta],
+          [cLat + delta, cLon - delta],
+          [cLat + delta, cLon + delta],
+          [cLat - delta, cLon + delta],
+          [cLat - delta, cLon - delta],
+        ],
+        population: 140000,
+        vulnerableCount: 28000,
+        treeCanopyPct: s.canopy,
+        builtDensityPct: s.built,
+        vulnerabilityIndex: s.vuln,
+        uhiOffsetDegC: s.uhi,
+        highRiskAreas: ['Unshaded Transit Arterials', 'Paved Market Corridors'],
+        lowRiskAreas: ['Canopy Shaded Parks', 'Municipal Green Corridor'],
+      };
+    });
 
     const lastUpdated = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
@@ -562,7 +705,7 @@ app.get('/api/citizen/local-risk-map', async (req: Request, res: Response) => {
 app.get('/api/citizen/my-risk', async (req: Request, res: Response) => {
   try {
     const { lat, lng } = parseCoords(req);
-    const { ward, city, state } = resolveLocationOrWard(req, lat, lng);
+    const { ward, city, state } = await resolveLocationOrWard(req, lat, lng);
     const weather = await fetchWeatherData(lat, lng);
     const current = weather.current;
     const now = new Date();
@@ -701,26 +844,54 @@ app.get('/api/citizen/my-risk', async (req: Request, res: Response) => {
       };
     });
 
-    // 8. Nearby Protection (Spatial Calculation)
-    const pointsWithDist = PROTECTION_POINTS.map((p) => {
-      const distanceKm = calculateDistanceKm(lat, lng, p.lat, p.lng);
-      const travelTimeMins = Math.max(2, Math.round(distanceKm * (p.type === 'cooling' ? 8 : 12)));
+    // 8. Nearby Protection (Spatial Calculation via Google Places API New)
+    const realPlaces = await fetchNearbyProtectionPlaces(lat, lng, 3500);
+
+    const pointsWithDist = realPlaces.map((p) => {
+      const distanceKm = Number((p.distanceMeters / 1000).toFixed(2));
       return {
-        ...p,
+        id: p.id,
+        name: p.name,
+        type:
+          p.category === 'COOLING_CENTER'
+            ? 'cooling'
+            : p.category === 'WATER_POINT'
+            ? 'water'
+            : p.category === 'SHADE_CANOPY'
+            ? 'shade'
+            : 'healthcare',
+        lat: p.lat,
+        lng: p.lng,
+        address: p.address,
+        amenities: [p.protectiveFeature],
+        availableCapacity: p.category === 'COOLING_CENTER' ? 250 : p.category === 'WATER_POINT' ? 500 : 150,
+        status: (p.openNow ?? true) ? 'Available' : 'Limited',
         distanceKm,
-        travelTimeMins,
+        travelTimeMins: p.walkingTimeMinutes,
         travelMode: distanceKm > 2.0 ? 'Driving' : 'Walking',
       };
     }).sort((a, b) => a.distanceKm - b.distanceKm);
 
-    const healthWithDist = HEALTHCARE_FACILITIES.map((h) => {
-      const distanceKm = calculateDistanceKm(lat, lng, h.lat, h.lng);
-      return {
-        ...h,
-        distanceKm,
-        travelTimeMins: Math.max(3, Math.round(distanceKm * 4)),
-      };
-    }).sort((a, b) => a.distanceKm - b.distanceKm);
+    const healthWithDist = realPlaces
+      .filter((p) => p.category === 'HEALTHCARE')
+      .map((h) => {
+        const distanceKm = Number((h.distanceMeters / 1000).toFixed(2));
+        return {
+          id: h.id,
+          name: h.name,
+          type: 'Hospital',
+          lat: h.lat,
+          lng: h.lng,
+          distanceKm,
+          travelTimeMins: h.walkingTimeMinutes,
+          address: h.address,
+          wardId: ward.id,
+          status: 'Available',
+          emergencyIndicator: true,
+          heatStrokeBedsAvailable: 8,
+        };
+      })
+      .sort((a, b) => a.distanceKm - b.distanceKm);
 
     const waterList = pointsWithDist.filter((p) => p.type === 'water');
     const coolingList = pointsWithDist.filter((p) => p.type === 'cooling');
@@ -769,7 +940,7 @@ app.get('/api/citizen/my-risk', async (req: Request, res: Response) => {
         id: p.id,
         name: p.name,
         type: p.type,
-        categoryLabel: p.categoryLabel,
+        categoryLabel: p.amenities?.[0] || 'Protection Shelter',
         distanceKm: p.distanceKm,
         travelTimeMins: p.travelTimeMins,
         travelMode: p.travelMode,
@@ -901,21 +1072,52 @@ app.get('/api/citizen/my-risk', async (req: Request, res: Response) => {
 });
 
 // 1. GET /api/location/resolve
-app.get('/api/location/resolve', (req: Request, res: Response) => {
+app.get('/api/location/resolve', async (req: Request, res: Response) => {
   const { lat, lng } = parseCoords(req);
-  const { ward, city, state } = resolveLocationOrWard(req, lat, lng);
+  const { ward, city, state, formattedAddress } = await resolveLocationOrWard(req, lat, lng);
+  const realNearbyPlaces = await fetchNearbyProtectionPlaces(lat, lng, 3500);
+
+  const landmarks = realNearbyPlaces.slice(0, 8).map((p) => ({
+    name: p.name,
+    label: `${p.name} (${p.typeBadge})`,
+    lat: p.lat,
+    lng: p.lng,
+    zone: p.category,
+  }));
+
   res.json({
     lat,
     lng,
     ward,
     city,
     state,
+    formattedAddress,
     country: 'India',
     elevationMeters: 560,
     urbanHeatIslandScore: ward.uhiOffsetDegC > 2.0 ? 'High UHI' : 'Moderate UHI',
-    allWards: PUNE_WARDS,
-    landmarks: PUNE_LANDMARKS,
+    allWards: ALL_REGIONAL_WARDS,
+    landmarks: landmarks.length > 0 ? landmarks : REGIONAL_LANDMARKS.filter((l) => !ward.city || l.city === ward.city),
   });
+});
+
+// Real Google Geocoding & Places APIs
+app.get('/api/geocode/reverse', async (req: Request, res: Response) => {
+  const { lat, lng } = parseCoords(req);
+  const result = await reverseGeocodeGoogle(lat, lng);
+  res.json(result);
+});
+
+app.get('/api/geocode/search', async (req: Request, res: Response) => {
+  const q = req.query.q as string;
+  const results = await searchAddressGoogle(q);
+  res.json(results);
+});
+
+app.get('/api/places/nearby', async (req: Request, res: Response) => {
+  const { lat, lng } = parseCoords(req);
+  const radius = req.query.radius ? parseInt(req.query.radius as string, 10) : 3500;
+  const places = await fetchNearbyProtectionPlaces(lat, lng, radius);
+  res.json(places);
 });
 
 // 2. GET /api/weather/current
@@ -997,7 +1199,7 @@ app.get('/api/thermal/forecast', async (req: Request, res: Response) => {
 // 7. GET /api/risk/current
 app.get('/api/risk/current', async (req: Request, res: Response) => {
   const { lat, lng } = parseCoords(req);
-  const { ward } = resolveLocationOrWard(req, lat, lng);
+  const { ward } = await resolveLocationOrWard(req, lat, lng);
   const weather = await fetchWeatherData(lat, lng);
   const current = weather.current;
   const now = new Date();
@@ -1057,7 +1259,7 @@ app.get('/api/risk/current', async (req: Request, res: Response) => {
 // 8. GET /api/risk/forecast
 app.get('/api/risk/forecast', async (req: Request, res: Response) => {
   const { lat, lng } = parseCoords(req);
-  const { ward } = resolveLocationOrWard(req, lat, lng);
+  const { ward } = await resolveLocationOrWard(req, lat, lng);
   const weather = await fetchWeatherData(lat, lng);
 
   const forecast = weather.daily.map((d, idx) => {
@@ -1086,9 +1288,9 @@ app.get('/api/risk/forecast', async (req: Request, res: Response) => {
 });
 
 // 8b. GET /api/risk/long-range-warning
-app.get('/api/risk/long-range-warning', (req: Request, res: Response) => {
+app.get('/api/risk/long-range-warning', async (req: Request, res: Response) => {
   const { lat, lng } = parseCoords(req);
-  const { ward } = resolveLocationOrWard(req, lat, lng);
+  const { ward } = await resolveLocationOrWard(req, lat, lng);
   const locationParam = req.query.location as string;
   const targetLocation = locationParam && locationParam.trim() ? locationParam.trim() : ward.name;
   const report = generateLongRangeEarlyWarning(targetLocation);
@@ -1098,7 +1300,7 @@ app.get('/api/risk/long-range-warning', (req: Request, res: Response) => {
 // 9. GET /api/heatwave/status
 app.get('/api/heatwave/status', async (req: Request, res: Response) => {
   const { lat, lng } = parseCoords(req);
-  const { city } = resolveLocationOrWard(req, lat, lng);
+  const { city } = await resolveLocationOrWard(req, lat, lng);
   const weather = await fetchWeatherData(lat, lng);
   const currentTemp = weather.current.temp;
 
@@ -1124,40 +1326,60 @@ app.get('/api/heatwave/status', async (req: Request, res: Response) => {
 });
 
 // 10. GET /api/protection/nearby
-app.get('/api/protection/nearby', (req: Request, res: Response) => {
+app.get('/api/protection/nearby', async (req: Request, res: Response) => {
   const { lat, lng } = parseCoords(req);
   const typeFilter = req.query.type as string; // 'water' | 'cooling' | 'shade' | 'healthcare'
 
-  const pointsWithDist = PROTECTION_POINTS.map((pt) => {
-    const dist = calculateDistanceKm(lat, lng, pt.lat, pt.lng);
-    const walkMins = Math.round(dist * 13); // ~4.6 km/h walking pace
-    return {
-      ...pt,
-      distanceKm: dist,
-      walkingTimeMins: Math.max(1, walkMins),
-    };
-  });
+  const realPlaces = await fetchNearbyProtectionPlaces(lat, lng, 4000);
+  const mapped = realPlaces.map((p) => ({
+    id: p.id,
+    name: p.name,
+    type:
+      p.category === 'COOLING_CENTER'
+        ? 'cooling'
+        : p.category === 'WATER_POINT'
+        ? 'water'
+        : p.category === 'SHADE_CANOPY'
+        ? 'shade'
+        : 'healthcare',
+    lat: p.lat,
+    lng: p.lng,
+    address: p.address,
+    amenities: [p.protectiveFeature],
+    availableCapacity: p.category === 'COOLING_CENTER' ? 300 : p.category === 'WATER_POINT' ? 600 : 150,
+    status: (p.openNow ?? true) ? 'Available' : 'Limited',
+    distanceKm: Number((p.distanceMeters / 1000).toFixed(2)),
+    walkingTimeMins: p.walkingTimeMinutes,
+    dataSource: 'LIVE',
+  }));
 
-  pointsWithDist.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-
-  const filtered = typeFilter ? pointsWithDist.filter((p) => p.type === typeFilter) : pointsWithDist;
-
+  const filtered = typeFilter ? mapped.filter((p) => p.type === typeFilter) : mapped;
   res.json(filtered);
 });
 
 // 11. GET /api/protection/summary
-app.get('/api/protection/summary', (req: Request, res: Response) => {
+app.get('/api/protection/summary', async (req: Request, res: Response) => {
   const { lat, lng } = parseCoords(req);
   const ward = resolveWardByCoords(lat, lng);
 
+  let basePoints = PROTECTION_POINTS;
+  try {
+    const dbPoints = await getProtectionPointsForCitizen();
+    if (dbPoints && dbPoints.length > 0) {
+      basePoints = dbPoints;
+    }
+  } catch (err) {
+    console.warn('[Database] Using fallback protection points for /api/protection/summary:', err);
+  }
+
   // Calculate municipal capacity vs vulnerable demand for this ward
-  const waterCount = PROTECTION_POINTS.filter((p) => p.type === 'water').length;
-  const coolingCount = PROTECTION_POINTS.filter((p) => p.type === 'cooling').length;
-  const shadeCount = PROTECTION_POINTS.filter((p) => p.type === 'shade').length;
+  const waterCount = basePoints.filter((p) => p.type === 'water').length;
+  const coolingCount = basePoints.filter((p) => p.type === 'cooling').length;
+  const shadeCount = basePoints.filter((p) => p.type === 'shade').length;
   const healthcareCount = HEALTHCARE_FACILITIES.length;
 
   let totalAvailableCap = 0;
-  for (const pt of PROTECTION_POINTS) {
+  for (const pt of basePoints) {
     totalAvailableCap += pt.availableCapacity;
   }
 
@@ -1170,7 +1392,7 @@ app.get('/api/protection/summary', (req: Request, res: Response) => {
   const summary: ProtectionSummary = {
     wardName: ward.name,
     zoneName: ward.zone,
-    totalFacilities: PROTECTION_POINTS.length,
+    totalFacilities: basePoints.length,
     waterPointsCount: waterCount,
     coolingCentresCount: coolingCount,
     shadeAreasCount: shadeCount,
@@ -1524,7 +1746,7 @@ app.post('/api/routes', async (req: Request, res: Response) => {
 // 14. GET /api/adaptive-response
 app.get('/api/adaptive-response', async (req: Request, res: Response) => {
   const { lat, lng } = parseCoords(req);
-  const { ward } = resolveLocationOrWard(req, lat, lng);
+  const { ward } = await resolveLocationOrWard(req, lat, lng);
   const weather = await fetchWeatherData(lat, lng);
   const wbgt = calculateWBGT(weather.current.temp, weather.current.humidity, weather.current.solarIrradiance, 2.5);
   const utci = calculateUTCI(weather.current.temp, weather.current.humidity, 2.5, weather.current.solarIrradiance);
@@ -1551,7 +1773,7 @@ app.get('/api/adaptive-response', async (req: Request, res: Response) => {
 app.get('/api/alerts', async (req: Request, res: Response) => {
   try {
     const { lat, lng } = parseCoords(req);
-    const { ward, city } = resolveLocationOrWard(req, lat, lng);
+    const { ward, city } = await resolveLocationOrWard(req, lat, lng);
     const weather = await fetchWeatherData(lat, lng);
     const wbgt = calculateWBGT(weather.current.temp, weather.current.humidity, weather.current.solarIrradiance, 2.5);
     const utci = calculateUTCI(weather.current.temp, weather.current.humidity, 2.5, weather.current.solarIrradiance);
@@ -1592,10 +1814,10 @@ app.get('/api/alerts', async (req: Request, res: Response) => {
 });
 
 // 15b. GET /api/alerts/history
-app.get('/api/alerts/history', (req: Request, res: Response) => {
+app.get('/api/alerts/history', async (req: Request, res: Response) => {
   try {
     const { lat, lng } = parseCoords(req);
-    const { ward, city } = resolveLocationOrWard(req, lat, lng);
+    const { ward, city } = await resolveLocationOrWard(req, lat, lng);
     const history = getCitizenAlertHistory(ward, city || 'Pune');
     res.json(history);
   } catch (err) {
@@ -1700,9 +1922,10 @@ app.post('/api/healthcare/workspace/settings', (req: Request, res: Response) => 
 });
 
 // --- MUNICIPAL CORPORATION WORKSPACE API ---
-app.get('/api/municipal/summary', (_req: Request, res: Response) => {
+app.get('/api/municipal/summary', (req: Request, res: Response) => {
   try {
-    const summary = getMunicipalSummary();
+    const city = req.query.city as string | undefined;
+    const summary = getMunicipalSummary(undefined, undefined, undefined, undefined, city);
     res.json(summary);
   } catch (err) {
     console.error('Error in /api/municipal/summary:', err);
@@ -1710,9 +1933,10 @@ app.get('/api/municipal/summary', (_req: Request, res: Response) => {
   }
 });
 
-app.get('/api/municipal/wards', (_req: Request, res: Response) => {
+app.get('/api/municipal/wards', (req: Request, res: Response) => {
   try {
-    const wards = getMunicipalWards();
+    const city = req.query.city as string | undefined;
+    const wards = getMunicipalWards(undefined, undefined, undefined, city);
     res.json(wards);
   } catch (err) {
     console.error('Error in /api/municipal/wards:', err);
@@ -1720,9 +1944,145 @@ app.get('/api/municipal/wards', (_req: Request, res: Response) => {
   }
 });
 
-app.get('/api/municipal/actions', (_req: Request, res: Response) => {
+// Database health check endpoint
+app.get('/api/db/status', async (_req: Request, res: Response) => {
   try {
-    const actions = getMunicipalActions();
+    const health = await checkSupabaseHealth();
+    res.json({
+      provider: 'Supabase PostgreSQL + PostGIS',
+      url: process.env.SUPABASE_URL || 'configured',
+      authProviders: ['email', 'google'],
+      ...health,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Database check failed' });
+  }
+});
+
+// --- SUPABASE DATABASE API ROUTES ---
+
+// 1. GET /api/wards
+app.get('/api/wards', async (req: Request, res: Response) => {
+  try {
+    const city = req.query.city as string | undefined;
+    if (city && city !== 'All') {
+      const filtered = ALL_REGIONAL_WARDS.filter(
+        (w) => (w.city || '').toLowerCase() === city.toLowerCase()
+      );
+      if (filtered.length > 0) return res.json(filtered);
+    }
+    const wards = await getWards();
+    if (wards && wards.length > 0) {
+      const existingIds = new Set(wards.map((w: any) => w.id));
+      const additional = ALL_REGIONAL_WARDS.filter((w) => !existingIds.has(w.id));
+      res.json([...wards, ...additional]);
+    } else {
+      res.json(ALL_REGIONAL_WARDS);
+    }
+  } catch (err: any) {
+    res.json(ALL_REGIONAL_WARDS);
+  }
+});
+
+// 2. GET /api/wards/:id
+app.get('/api/wards/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const ward = await getWardById(id);
+    if (!ward) {
+      return res.status(404).json({ error: `Ward '${id}' not found` });
+    }
+    res.json(ward);
+  } catch (err: any) {
+    console.error(`Error in /api/wards/${req.params.id}:`, err);
+    res.status(500).json({ error: err?.message || 'Failed to fetch ward' });
+  }
+});
+
+// 3. GET /api/wards/:id/demographics
+app.get('/api/wards/:id/demographics', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const demographics = await getWardDemographics(id);
+    res.json(demographics);
+  } catch (err: any) {
+    console.error(`Error in /api/wards/${req.params.id}/demographics:`, err);
+    res.status(500).json({ error: err?.message || 'Failed to fetch ward demographics' });
+  }
+});
+
+// 4. GET /api/protection-assets
+app.get('/api/protection-assets', async (req: Request, res: Response) => {
+  try {
+    const wardId = req.query.wardId as string | undefined;
+    const assetType = req.query.assetType as string | undefined;
+    const assets = await getProtectionAssets({ wardId, assetType });
+    res.json(assets);
+  } catch (err: any) {
+    console.error('Error in /api/protection-assets:', err);
+    res.status(500).json({ error: err?.message || 'Failed to fetch protection assets' });
+  }
+});
+
+// 5. GET /api/healthcare
+app.get('/api/healthcare', async (req: Request, res: Response) => {
+  try {
+    const wardId = req.query.wardId as string | undefined;
+    const facilities = await getHealthcareFacilities({ wardId });
+    res.json(facilities);
+  } catch (err: any) {
+    console.error('Error in /api/healthcare:', err);
+    res.status(500).json({ error: err?.message || 'Failed to fetch healthcare facilities' });
+  }
+});
+
+// 6. GET /api/municipal/risk
+app.get('/api/municipal/risk', async (req: Request, res: Response) => {
+  try {
+    const wardId = req.query.wardId as string | undefined;
+    const snapshots = await getWardRiskSnapshots(wardId);
+    res.json(snapshots);
+  } catch (err: any) {
+    console.error('Error in /api/municipal/risk:', err);
+    res.status(500).json({ error: err?.message || 'Failed to fetch municipal risk snapshots' });
+  }
+});
+
+// 7. GET /api/weather/observations
+app.get('/api/weather/observations', async (req: Request, res: Response) => {
+  try {
+    const locationKey = req.query.locationKey as string | undefined;
+    let observations = await getWeatherObservations(locationKey);
+    if (!observations || observations.length === 0) {
+      await fetchWeatherData(18.5204, 73.8567);
+      observations = await getWeatherObservations(locationKey);
+    }
+    res.json(observations);
+  } catch (err: any) {
+    console.error('Error in /api/weather/observations:', err);
+    res.status(500).json({ error: err?.message || 'Failed to fetch weather observations' });
+  }
+});
+
+// 8. GET /api/weather/forecasts
+app.get('/api/weather/forecasts', async (req: Request, res: Response) => {
+  try {
+    const locationKey = req.query.locationKey as string | undefined;
+    let forecasts = await getWeatherForecasts(locationKey);
+    if (!forecasts || forecasts.length === 0) {
+      await fetchWeatherData(18.5204, 73.8567);
+      forecasts = await getWeatherForecasts(locationKey);
+    }
+    res.json(forecasts);
+  } catch (err: any) {
+    console.error('Error in /api/weather/forecasts:', err);
+    res.status(500).json({ error: err?.message || 'Failed to fetch weather forecasts' });
+  }
+});
+
+app.get('/api/municipal/actions', async (_req: Request, res: Response) => {
+  try {
+    const actions = await getMunicipalActions();
     res.json(actions);
   } catch (err) {
     console.error('Error in /api/municipal/actions:', err);
@@ -1730,11 +2090,11 @@ app.get('/api/municipal/actions', (_req: Request, res: Response) => {
   }
 });
 
-app.post('/api/municipal/actions/:id/status', (req: Request, res: Response) => {
+app.post('/api/municipal/actions/:id/status', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const updated = updateMunicipalActionStatus(id, status);
+    const updated = await updateMunicipalActionStatus(id, status);
     if (!updated) {
       return res.status(404).json({ error: 'Action item not found' });
     }
@@ -1755,9 +2115,9 @@ app.get('/api/municipal/resources', (_req: Request, res: Response) => {
   }
 });
 
-app.get('/api/municipal/alerts', (_req: Request, res: Response) => {
+app.get('/api/municipal/alerts', async (_req: Request, res: Response) => {
   try {
-    const alerts = getMunicipalAlertsList();
+    const alerts = await getMunicipalAlertsList();
     res.json(alerts);
   } catch (err) {
     console.error('Error in /api/municipal/alerts:', err);
@@ -1765,13 +2125,13 @@ app.get('/api/municipal/alerts', (_req: Request, res: Response) => {
   }
 });
 
-app.post('/api/municipal/alerts', (req: Request, res: Response) => {
+app.post('/api/municipal/alerts', async (req: Request, res: Response) => {
   try {
     const { what, where, when, why, action, severity } = req.body;
     if (!what || !where) {
       return res.status(400).json({ error: 'Missing required alert fields' });
     }
-    const created = addMunicipalAlert({
+    const created = await addMunicipalAlert({
       what,
       where,
       when: when || 'Immediate',

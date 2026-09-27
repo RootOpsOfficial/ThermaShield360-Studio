@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useCitizen } from '../context/CitizenContext.js';
-import { InteractiveGisMap } from '../components/InteractiveGisMap.js';
+import { GoogleThermalGisMap } from '../components/GoogleThermalGisMap.js';
 import { ThermalStressBlock } from '../components/ThermalStressBlock.js';
+import { PersonalHeatImpactCard } from '../components/PersonalHeatImpactCard.js';
 import {
   Flame,
   ThermometerSun,
@@ -34,6 +35,8 @@ import {
   ShieldCheck,
   Users,
   Search,
+  Globe2,
+  LocateFixed,
 } from 'lucide-react';
 
 export const CitizenHomePage: React.FC = () => {
@@ -47,6 +50,7 @@ export const CitizenHomePage: React.FC = () => {
     location,
     selectWard,
     setCustomLocation,
+    requestGpsLocation,
     formatTemp,
     setActivePage,
     navigateToHealthcareWithDirections,
@@ -54,7 +58,36 @@ export const CitizenHomePage: React.FC = () => {
 
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
   const [locationSearchQuery, setLocationSearchQuery] = useState('');
+  const [geocodeSearchResults, setGeocodeSearchResults] = useState<any[]>([]);
+  const [isSearchingGeocode, setIsSearchingGeocode] = useState(false);
   const [expandedHeatwavePeriod, setExpandedHeatwavePeriod] = useState<string | null>('1-30-days');
+
+  // Debounced live Google Geocoding search
+  useEffect(() => {
+    if (!locationSearchQuery || locationSearchQuery.trim().length < 3) {
+      setGeocodeSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingGeocode(true);
+      try {
+        const res = await fetch(`/api/geocode/search?q=${encodeURIComponent(locationSearchQuery.trim())}`);
+        if (res.ok) {
+          const results = await res.json();
+          if (Array.isArray(results)) {
+            setGeocodeSearchResults(results);
+          }
+        }
+      } catch (err) {
+        console.warn('Geocoding search failed:', err);
+      } finally {
+        setIsSearchingGeocode(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [locationSearchQuery]);
 
   const todayDate = new Intl.DateTimeFormat('en-IN', {
     day: 'numeric',
@@ -69,28 +102,41 @@ export const CitizenHomePage: React.FC = () => {
   const peakTime = riskCurrent?.peakPeriod || '12:30 PM – 04:30 PM';
   const compositeVulnerability = riskCurrent?.riskScore ?? 78;
 
-  // Curated major locations/cities across India & Pune
+  // Curated major locations/cities across Maharashtra & Nationwide India
   const ALL_POPULAR_LOCATIONS = [
+    // Maharashtra
     { name: 'Ward 14: Shivajinagar - Ghole Road, Pune', lat: 18.5314, lng: 73.8446 },
     { name: 'Ward 21: Kasba Peth - Vishrambaug Wada, Pune', lat: 18.5178, lng: 73.8558 },
     { name: 'Ward 8: Kothrud - Bavdhan, Pune', lat: 18.5074, lng: 73.8077 },
     { name: 'Ward 3: Aundh - Baner - Balewadi, Pune', lat: 18.5584, lng: 73.8072 },
     { name: 'Ward 18: Hadapsar - Magarpatta, Pune', lat: 18.5089, lng: 73.9259 },
-    { name: 'Ward 2: Yerwada - Kalas - Dhanori, Pune', lat: 18.5529, lng: 73.8797 },
-    { name: 'Ward 5: Viman Nagar - Nagar Road, Pune', lat: 18.5679, lng: 73.9143 },
-    { name: 'Ward 25: Dhankawadi - Sahakarnagar, Pune', lat: 18.4739, lng: 73.8532 },
-    { name: 'Ward 11: Bibwewadi, Pune', lat: 18.4691, lng: 73.8643 },
-    { name: 'Ward 28: Sinhagad Road - Vadgaon, Pune', lat: 18.4721, lng: 73.8184 },
-    { name: 'Mumbai, Maharashtra', lat: 19.076, lng: 72.8777 },
-    { name: 'Nagpur, Maharashtra', lat: 21.1458, lng: 79.0882 },
-    { name: 'Nashik, Maharashtra', lat: 19.9975, lng: 73.7898 },
-    { name: 'New Delhi, Delhi NCR', lat: 28.6139, lng: 77.209 },
-    { name: 'Bengaluru, Karnataka', lat: 12.9716, lng: 77.5946 },
-    { name: 'Hyderabad, Telangana', lat: 17.385, lng: 78.4867 },
-    { name: 'Ahmedabad, Gujarat', lat: 23.0225, lng: 72.5714 },
-    { name: 'Chennai, Tamil Nadu', lat: 13.0827, lng: 80.2707 },
-    { name: 'Kolkata, West Bengal', lat: 22.5726, lng: 88.3639 },
-    { name: 'Jaipur, Rajasthan', lat: 26.9124, lng: 75.7873 },
+    { name: 'Ward A: Colaba - Nariman Point, Mumbai', lat: 18.9220, lng: 72.8347 },
+    { name: 'Ward G/South: Worli - Lower Parel, Mumbai', lat: 18.9986, lng: 72.8311 },
+    { name: 'Ward H/East: Bandra Kurla Complex (BKC), Mumbai', lat: 19.0664, lng: 72.8682 },
+    { name: 'Ward K/West: Andheri West - Juhu, Mumbai', lat: 19.1197, lng: 72.8468 },
+    { name: 'Ward G/North: Dharavi - Dadar, Mumbai', lat: 19.0402, lng: 72.8509 },
+    { name: 'TMC Ward 1: Naupada - Thane Station, Thane', lat: 19.1860, lng: 72.9759 },
+    { name: 'NMMC Ward 1: Vashi - Turbhe MIDC, Navi Mumbai', lat: 19.0771, lng: 73.0039 },
+    { name: 'NMC Ward 1: Sitabuldi - Dharampeth, Nagpur', lat: 21.1458, lng: 79.0805 },
+    { name: 'NMC Ward 1: Panchavati - Godavari Ghats, Nashik', lat: 20.0059, lng: 73.7997 },
+    { name: 'CSN Ward 1: Kranti Chowk, Chhatrapati Sambhaji Nagar', lat: 19.8762, lng: 75.3240 },
+    { name: 'SMC Ward 1: Solapur Central - Navi Peth, Solapur', lat: 17.6599, lng: 75.9064 },
+    { name: 'KMC Ward 1: Mahalaxmi - Shahupuri, Kolhapur', lat: 16.7050, lng: 74.2433 },
+    { name: 'AMC Ward 1: Rajkamal Chowk, Amravati', lat: 20.9320, lng: 77.7523 },
+
+    // National Metros & Capitals
+    { name: 'Ward DL-01: Connaught Place, New Delhi', lat: 28.6304, lng: 77.2177 },
+    { name: 'Ward DL-02: Chandni Chowk, Old Delhi', lat: 28.6562, lng: 77.2300 },
+    { name: 'Ward DL-03: Hauz Khas - Saket, South Delhi', lat: 28.5494, lng: 77.2001 },
+    { name: 'BBMP Ward 1: Majestic - Kempegowda, Bengaluru', lat: 12.9767, lng: 77.5713 },
+    { name: 'BBMP Ward 3: Whitefield ITPL, Bengaluru', lat: 12.9698, lng: 77.7499 },
+    { name: 'GHMC Ward 1: Charminar - Old City, Hyderabad', lat: 17.3616, lng: 78.4747 },
+    { name: 'GHMC Ward 2: HITEC City - Gachibowli, Hyderabad', lat: 17.4474, lng: 78.3762 },
+    { name: 'AMC Ward 1: Relief Road - Lal Darwaja, Ahmedabad', lat: 23.0276, lng: 72.5873 },
+    { name: 'GCC Ward 1: Chennai Central - Parrys, Chennai', lat: 13.0878, lng: 80.2838 },
+    { name: 'KMC Ward 1: BBD Bagh - Esplanade, Kolkata', lat: 22.5726, lng: 88.3500 },
+    { name: 'JMC Ward 1: Johari Bazaar - Hawa Mahal, Jaipur', lat: 26.9239, lng: 75.8267 },
+    { name: 'LMC Ward 1: Hazratganj - Charbagh, Lucknow', lat: 26.8467, lng: 80.9462 },
   ];
 
   const filteredLocations = ALL_POPULAR_LOCATIONS.filter((l) =>
@@ -301,14 +347,25 @@ export const CitizenHomePage: React.FC = () => {
                 />
                 <div className="absolute left-0 top-full mt-1.5 z-40 w-80 max-h-80 overflow-hidden flex flex-col rounded-2xl bg-white border border-slate-200 shadow-xl animate-in fade-in zoom-in-95 duration-150">
                   {/* Search box for any location */}
-                  <div className="p-2.5 border-b border-slate-100 bg-slate-50">
+                  <div className="p-2.5 border-b border-slate-100 bg-slate-50 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        requestGpsLocation();
+                        setIsLocationDropdownOpen(false);
+                      }}
+                      className="w-full py-1.5 px-2.5 rounded-xl bg-blue-50 hover:bg-blue-100/80 text-blue-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-all border border-blue-200"
+                    >
+                      <LocateFixed className="w-3.5 h-3.5" />
+                      <span>Use My Exact GPS Location</span>
+                    </button>
                     <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs">
                       <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <input
                         type="text"
                         value={locationSearchQuery}
                         onChange={(e) => setLocationSearchQuery(e.target.value)}
-                        placeholder="Search any city or Pune ward..."
+                        placeholder="Search any address or locality in India..."
                         className="w-full bg-transparent text-slate-800 placeholder-slate-400 outline-none text-xs"
                         autoFocus
                       />
@@ -316,8 +373,38 @@ export const CitizenHomePage: React.FC = () => {
                   </div>
 
                   <div className="overflow-y-auto p-1.5 space-y-0.5 max-h-60">
+                    {/* Live Google Geocoding Results */}
+                    {geocodeSearchResults.length > 0 && (
+                      <div className="space-y-0.5 pb-2 mb-2 border-b border-slate-100">
+                        <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 flex items-center gap-1">
+                          <Globe2 className="w-3 h-3" /> Google Geocoding Results
+                        </div>
+                        {geocodeSearchResults.map((geo) => (
+                          <button
+                            key={geo.placeId || `${geo.lat}_${geo.lng}`}
+                            type="button"
+                            onClick={() => {
+                              setCustomLocation(geo.displayName || geo.formattedAddress, geo.lat, geo.lng);
+                              setIsLocationDropdownOpen(false);
+                              setLocationSearchQuery('');
+                              setGeocodeSearchResults([]);
+                            }}
+                            className="w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between text-xs transition-colors hover:bg-blue-50 text-slate-700 font-medium"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <div className="truncate">
+                                <div className="font-semibold text-slate-900 truncate">{geo.displayName}</div>
+                                <div className="text-[10px] text-slate-400 truncate">{geo.formattedAddress}</div>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Locations & Wards
+                      Popular Hubs & Districts
                     </div>
 
                     {filteredLocations.map((loc) => {
@@ -331,14 +418,16 @@ export const CitizenHomePage: React.FC = () => {
                           key={loc.name}
                           type="button"
                           onClick={() => {
-                            const isWardItem = loc.name.toLowerCase().startsWith('ward ');
-                            const matchedWard = isWardItem
-                              ? location.allWards.find(
-                                  (w) =>
-                                    loc.name.toLowerCase().includes(w.name.toLowerCase().split(':')[0]) ||
-                                    w.name.toLowerCase().includes(loc.name.toLowerCase().split(',')[0])
-                                )
-                              : null;
+                            const matchedWard = location.allWards.find(
+                              (w) =>
+                                (w.city && loc.name.toLowerCase().includes(w.city.toLowerCase()) && (
+                                  loc.name.toLowerCase().includes(w.name.toLowerCase().split(':')[0]) ||
+                                  w.name.toLowerCase().includes(loc.name.toLowerCase().split(':')[0])
+                                )) ||
+                                loc.name.toLowerCase().includes(w.name.toLowerCase().split(',')[0]) ||
+                                w.name.toLowerCase().includes(loc.name.toLowerCase().split(',')[0]) ||
+                                (Math.abs(w.center[0] - loc.lat) < 0.04 && Math.abs(w.center[1] - loc.lng) < 0.04)
+                            );
 
                             if (matchedWard) {
                               selectWard(matchedWard.id);
@@ -586,6 +675,11 @@ export const CitizenHomePage: React.FC = () => {
       </section>
 
       {/* ========================================================================= */}
+      {/* HUMAN THERMAL STRESS ENGINE: WHAT THIS HEAT CONDITION MEANS FOR YOU      */}
+      {/* ========================================================================= */}
+      <PersonalHeatImpactCard />
+
+      {/* ========================================================================= */}
       {/* BLOCK 2: THERMAL STRESS (ONE LARGE CONNECTED APPLE-STYLE VISUAL BLOCK)    */}
       {/* ========================================================================= */}
       <ThermalStressBlock />
@@ -637,7 +731,7 @@ export const CitizenHomePage: React.FC = () => {
               whoAffected:
                 'Street vendors, outdoor construction laborers, traffic police, school students during afternoon commutes, senior citizens (65+), and patients with cardiovascular or renal conditions.',
               otherThings:
-                'Pune Municipal Corporation (PMC) will activate public water kiosks and transit misting corridors. Early warning lead-time: 14 days. Models: ECMWF, NOAA GFS, IMD.',
+                'Municipal Corporation and Disaster Management will activate public water kiosks and transit misting corridors. Early warning lead-time: 14 days. Models: ECMWF, NOAA GFS, IMD.',
             },
             {
               id: '1-2-months',
@@ -691,7 +785,7 @@ export const CitizenHomePage: React.FC = () => {
               whoAffected:
                 'Unorganized outdoor laborers, gig delivery workers, young children, senior citizens living independently, and pets/livestock.',
               otherThings:
-                'Triggers PMC Heat Action Plan (HAP) Level-2 Orange Alert. Civic cooling shelters operational at Swargate, Shivajinagar, and Pune Station terminals.',
+                'Triggers Heat Action Plan (HAP) Level-2 Orange Alert. Civic cooling shelters operational at key transit hubs, bus stations, and central railway terminals.',
             },
             {
               id: '8-12-months',
@@ -869,8 +963,14 @@ export const CitizenHomePage: React.FC = () => {
           </button>
         </div>
 
-        <div className="mt-4 rounded-2xl overflow-hidden border border-black/5">
-          <InteractiveGisMap heightClass="h-[380px]" showLayerSelector={true} />
+        <div className="mt-4 rounded-2xl overflow-hidden border border-black/5 shadow-xs">
+          <GoogleThermalGisMap
+            heightClass="h-[420px]"
+            showLayerSelector={true}
+            centerLat={location.lat}
+            centerLng={location.lng}
+            zoom={14}
+          />
         </div>
       </section>
 

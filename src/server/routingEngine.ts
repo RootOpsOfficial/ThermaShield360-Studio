@@ -115,6 +115,20 @@ export async function generateRoutes(
   currentRiskLevel: RiskLevel = 'High',
   ambientTemp: number = 38.4
 ): Promise<GenerateRoutesResult> {
+  // 1. Primary: Google Routes API with ThermaShield Biometeorological Scoring
+  try {
+    const { computeThermalSafeRoutesGoogle } = await import('./googleRoutesService.js');
+    const googleRoutesResult = await computeThermalSafeRoutesGoogle({
+      origin,
+      destination,
+      travelMode: 'WALK',
+      currentTemp: ambientTemp,
+    });
+    return googleRoutesResult as any;
+  } catch (gErr) {
+    console.warn('[RoutingEngine] Google Routes API failed, falling back to secondary routing:', gErr);
+  }
+
   const directDist = calculateDistanceKm(origin.lat, origin.lng, destination.lat, destination.lng);
   const baseDistKm = Math.max(0.6, directDist * 1.25);
 

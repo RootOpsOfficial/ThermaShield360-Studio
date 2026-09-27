@@ -281,7 +281,7 @@ export const MunicipalAlertsPage: React.FC = () => {
                         {w.name}
                       </option>
                     ))}
-                    <option value="Citywide Pune Corporation">Citywide Pune Corporation</option>
+                    <option value="Jurisdiction-wide Municipal Grid">Jurisdiction-wide Municipal Grid</option>
                   </select>
                 </div>
 

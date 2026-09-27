@@ -17,6 +17,9 @@ import {
   LongRangeEarlyWarningReport,
   CitizenMyRiskData,
   CitizenHeatRiskResponse,
+  ActivityType,
+  PersonalHeatImpact,
+  PersonalHeatImpactInput,
 } from '../types.js';
 
 interface CitizenProfile {
@@ -77,6 +80,21 @@ interface CitizenContextType {
   lastUpdatedTime: string;
   refreshData: () => Promise<void>;
 
+  // Human Heat Impact & Personal Activity Engine
+  activityType: ActivityType;
+  setActivityType: (type: ActivityType) => void;
+  exposureDuration: string;
+  setExposureDuration: (duration: string) => void;
+  isOutdoorExposure: boolean;
+  setIsOutdoorExposure: (isOutdoor: boolean) => void;
+  destination: { name: string; lat: number; lng: number } | null;
+  setDestination: (dest: { name: string; lat: number; lng: number } | null) => void;
+  plannedTravelTime: string;
+  setPlannedTravelTime: (time: string) => void;
+  personalImpact: PersonalHeatImpact | null;
+  evaluateImpact: (overrideParams?: Partial<PersonalHeatImpactInput>) => Promise<PersonalHeatImpact | null>;
+  isEvaluatingImpact: boolean;
+
   // Drawer / modal states
   isNotificationOpen: boolean;
   setIsNotificationOpen: (open: boolean) => void;
@@ -88,25 +106,25 @@ interface CitizenContextType {
 }
 
 const defaultWard: WardInfo = {
-  id: 'ward-14',
-  name: 'Ward 14: Shivajinagar - Ghole Road',
-  zone: 'Central Pune Zone',
-  center: [18.5314, 73.8446],
+  id: 'loc-default',
+  name: 'Local Urban District',
+  zone: 'Active Sector',
+  center: [18.5204, 73.8567],
   bounds: [
-    [18.542, 73.834],
-    [18.545, 73.856],
-    [18.524, 73.861],
-    [18.518, 73.839],
-    [18.542, 73.834],
+    [18.535, 73.845],
+    [18.535, 73.87],
+    [18.51, 73.87],
+    [18.51, 73.845],
+    [18.535, 73.845],
   ],
-  population: 142000,
-  vulnerableCount: 28400,
-  treeCanopyPct: 32,
-  builtDensityPct: 68,
+  population: 145000,
+  vulnerableCount: 29000,
+  treeCanopyPct: 28,
+  builtDensityPct: 72,
   vulnerabilityIndex: 58,
   uhiOffsetDegC: 1.8,
-  highRiskAreas: ['FC Road Shopping Spine', 'Shivajinagar Bus & Railway Terminus', 'Modern College Square'],
-  lowRiskAreas: ['Sambhaji Park Canopy', 'Agricultural College Green Belt', 'Mutha River Greenway'],
+  highRiskAreas: ['Unshaded Transit Arterials', 'Paved Commercial Corridors'],
+  lowRiskAreas: ['Canopy Shaded Parks', 'Civic Green Spaces'],
 };
 
 const CitizenContext = createContext<CitizenContextType | null>(null);
@@ -123,7 +141,7 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const [profile, setProfile] = useState<CitizenProfile>({
-    name: 'Citizen (Pune Resident)',
+    name: 'Citizen User',
     ageGroup: 'Adult (18-64)',
     isOutdoorWorker: false,
     hasHealthCondition: false,
@@ -131,8 +149,8 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
 
   const [location, setLocation] = useState<LocationState>({
-    lat: 18.5314,
-    lng: 73.8446,
+    lat: 18.5204,
+    lng: 73.8567,
     isGps: false,
     gpsStatus: 'idle',
     ward: defaultWard,
@@ -154,6 +172,15 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [alertHistory, setAlertHistory] = useState<AlertHistoryItem[]>([]);
   const [adaptiveRecommendations, setAdaptiveRecommendations] = useState<AdaptiveRecommendation[]>([]);
   const [longRangeReport, setLongRangeReport] = useState<LongRangeEarlyWarningReport | null>(null);
+
+  // Human Heat Impact & Personal Activity Engine State
+  const [activityType, setActivityType] = useState<ActivityType>('Walking / Commuting');
+  const [exposureDuration, setExposureDuration] = useState<string>('1-2 hours');
+  const [isOutdoorExposure, setIsOutdoorExposure] = useState<boolean>(true);
+  const [destination, setDestination] = useState<{ name: string; lat: number; lng: number } | null>(null);
+  const [plannedTravelTime, setPlannedTravelTime] = useState<string>('10:30 AM');
+  const [personalImpact, setPersonalImpact] = useState<PersonalHeatImpact | null>(null);
+  const [isEvaluatingImpact, setIsEvaluatingImpact] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -191,7 +218,8 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     try {
       const nameParam = locationName ? `&name=${encodeURIComponent(locationName)}&location=${encodeURIComponent(locationName)}` : '';
-      const query = `?lat=${lat}&lng=${lng}&ageGroup=${encodeURIComponent(profile.ageGroup)}&isOutdoorWorker=${profile.isOutdoorWorker}&hasHealthCondition=${profile.hasHealthCondition}${nameParam}`;
+      const destParam = destination ? `&destinationLat=${destination.lat}&destinationLng=${destination.lng}&destinationName=${encodeURIComponent(destination.name)}` : '';
+      const query = `?lat=${lat}&lng=${lng}&ageGroup=${encodeURIComponent(profile.ageGroup)}&isOutdoorWorker=${profile.isOutdoorWorker}&hasHealthCondition=${profile.hasHealthCondition}&activityType=${encodeURIComponent(activityType)}&outdoorExposure=${isOutdoorExposure}&exposureDuration=${encodeURIComponent(exposureDuration)}${nameParam}${destParam}`;
 
       const [
         locRes,
@@ -233,12 +261,35 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const resolvedWard = locationName
             ? { ...(locData.ward || prev.ward), name: locationName }
             : (locData.ward || prev.ward);
-          const wardsList: WardInfo[] = locData.allWards || prev.allWards;
-          const hasWard = wardsList.some((w: WardInfo) => w.name === resolvedWard.name);
+          const rawWards: WardInfo[] = (locData.allWards && locData.allWards.length > 0)
+            ? locData.allWards
+            : prev.allWards;
+
+          // Strictly deduplicate all wards by id
+          const seen = new Set<string>();
+          const dedupedWards: WardInfo[] = [];
+
+          // If resolvedWard matches an existing ward by ID, update that ward in place
+          for (const w of rawWards) {
+            if (!w?.id) continue;
+            if (seen.has(w.id)) continue;
+            seen.add(w.id);
+            if (resolvedWard && w.id === resolvedWard.id) {
+              dedupedWards.push({ ...w, ...resolvedWard });
+            } else {
+              dedupedWards.push(w);
+            }
+          }
+
+          // If resolvedWard has an ID not yet present in the list, prepend it
+          if (resolvedWard?.id && !seen.has(resolvedWard.id)) {
+            dedupedWards.unshift(resolvedWard);
+          }
+
           return {
             ...prev,
             ward: resolvedWard,
-            allWards: hasWard ? wardsList : [resolvedWard, ...wardsList],
+            allWards: dedupedWards,
           };
         });
       }
@@ -249,7 +300,13 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (tcRes.ok) setThermalCurrent(await tcRes.json());
       if (rcRes.ok) setRiskCurrent(await rcRes.json());
       if (myRiskRes.ok) setMyRiskData(await myRiskRes.json());
-      if (heatRiskRes.ok) setHeatRiskData(await heatRiskRes.json());
+      if (heatRiskRes.ok) {
+        const hrData = await heatRiskRes.json();
+        setHeatRiskData(hrData);
+        if (hrData.personalImpact) {
+          setPersonalImpact(hrData.personalImpact);
+        }
+      }
       if (hwRes.ok) setHeatwaveStatus(await hwRes.json());
       if (ppRes.ok) setProtectionPoints(await ppRes.json());
       if (psRes.ok) setProtectionSummary(await psRes.json());
@@ -282,7 +339,42 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [profile.ageGroup, profile.isOutdoorWorker, profile.hasHealthCondition]);
+  }, [profile.ageGroup, profile.isOutdoorWorker, profile.hasHealthCondition, activityType, isOutdoorExposure, exposureDuration, destination]);
+
+  // Explicitly evaluate personal impact when parameters change
+  const evaluateImpact = useCallback(
+    async (overrideParams?: Partial<PersonalHeatImpactInput>): Promise<PersonalHeatImpact | null> => {
+      setIsEvaluatingImpact(true);
+      try {
+        const act = overrideParams?.activityType || activityType;
+        const dur = overrideParams?.exposureDuration || exposureDuration;
+        const out = overrideParams?.outdoorExposure !== undefined ? overrideParams.outdoorExposure : isOutdoorExposure;
+        const dest = overrideParams?.destinationContext
+          ? overrideParams.destinationContext
+          : destination;
+
+        let url = `/api/citizen/heat-impact?lat=${location.lat}&lng=${location.lng}&activityType=${encodeURIComponent(act)}&outdoorExposure=${out}&exposureDuration=${encodeURIComponent(dur)}&ageGroup=${encodeURIComponent(profile.ageGroup)}&hasHealthCondition=${profile.hasHealthCondition}&isOutdoorWorker=${profile.isOutdoorWorker}`;
+
+        if (dest && 'lat' in dest && 'lng' in dest) {
+          url += `&destinationLat=${(dest as any).lat}&destinationLng=${(dest as any).lng}&destinationName=${encodeURIComponent(dest.name)}`;
+        }
+
+        const res = await fetch(url);
+        if (res.ok) {
+          const data: PersonalHeatImpact = await res.json();
+          setPersonalImpact(data);
+          return data;
+        }
+        return null;
+      } catch (e) {
+        console.error('Failed to evaluate personal heat impact:', e);
+        return null;
+      } finally {
+        setIsEvaluatingImpact(false);
+      }
+    },
+    [location.lat, location.lng, activityType, exposureDuration, isOutdoorExposure, destination, profile]
+  );
 
   // Request browser GPS position
   const requestGpsLocation = useCallback(() => {
@@ -362,16 +454,27 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
       lowRiskAreas: ['Public Park & Shaded Avenue', 'Waterfront Greenway'],
     };
 
-    setLocation((prev) => ({
-      ...prev,
-      lat,
-      lng,
-      ward: customWard,
-      allWards: prev.allWards.some((w) => w.name === name)
-        ? prev.allWards
-        : [customWard, ...prev.allWards],
-      isGps: false,
-    }));
+    setLocation((prev) => {
+      const seen = new Set<string>();
+      const deduped: WardInfo[] = [customWard];
+      seen.add(customWard.id);
+      for (const w of prev.allWards) {
+        if (!w?.id) continue;
+        if (w.id === customWard.id || w.name.toLowerCase() === name.toLowerCase()) continue;
+        if (!seen.has(w.id)) {
+          seen.add(w.id);
+          deduped.push(w);
+        }
+      }
+      return {
+        ...prev,
+        lat,
+        lng,
+        ward: customWard,
+        allWards: deduped,
+        isGps: false,
+      };
+    });
     fetchAllData(lat, lng, true, name);
   };
 
@@ -440,6 +543,21 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
         apiError,
         lastUpdatedTime,
         refreshData,
+
+        // Human Heat Impact & Personal Activity Engine
+        activityType,
+        setActivityType,
+        exposureDuration,
+        setExposureDuration,
+        isOutdoorExposure,
+        setIsOutdoorExposure,
+        destination,
+        setDestination,
+        plannedTravelTime,
+        setPlannedTravelTime,
+        personalImpact,
+        evaluateImpact,
+        isEvaluatingImpact,
 
         isNotificationOpen,
         setIsNotificationOpen,

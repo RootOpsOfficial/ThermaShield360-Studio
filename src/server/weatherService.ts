@@ -9,7 +9,8 @@ interface CachedWeatherData {
 }
 
 const cache: Map<string, CachedWeatherData> = new Map();
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes cache
+let rateLimitedUntil = 0; // Cooldown timestamp when Open-Meteo returns 429 or rate limits
 
 // Map WMO weather codes to human text
 function decodeWeatherCode(code: number): string {
@@ -153,6 +154,7 @@ export async function fetchWeatherData(
   const cacheKey = `${lat.toFixed(2)},${lng.toFixed(2)}`;
   const cached = cache.get(cacheKey);
 
+  // Return fresh cache if within TTL
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return {
       current: cached.current,
@@ -160,6 +162,22 @@ export async function fetchWeatherData(
       daily: cached.daily,
       source: cached.current.source,
     };
+  }
+
+  // If in rate-limit backoff period, use stale cache if available or calibrate model
+  if (Date.now() < rateLimitedUntil) {
+    if (cached) {
+      return {
+        current: cached.current,
+        hourly: cached.hourly,
+        daily: cached.daily,
+        source: cached.current.source,
+      };
+    }
+    const fallback = getFallbackModelledWeather(lat, lng);
+    const result = { ...fallback, source: 'MODELLED' as DataSourceLabel };
+    cache.set(cacheKey, { timestamp: Date.now(), ...result });
+    return result;
   }
 
   try {
@@ -171,8 +189,25 @@ export async function fetchWeatherData(
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
 
+    if (res.status === 429) {
+      // Open-Meteo rate limit hit; trigger 15-minute circuit breaker
+      rateLimitedUntil = Date.now() + 15 * 60 * 1000;
+      if (cached) {
+        return {
+          current: cached.current,
+          hourly: cached.hourly,
+          daily: cached.daily,
+          source: cached.current.source,
+        };
+      }
+      const fallback = getFallbackModelledWeather(lat, lng);
+      const result = { ...fallback, source: 'MODELLED' as DataSourceLabel };
+      cache.set(cacheKey, { timestamp: Date.now(), ...result });
+      return result;
+    }
+
     if (!res.ok) {
-      throw new Error(`Open-Meteo returned status ${res.status}`);
+      throw new Error(`Weather service HTTP ${res.status}`);
     }
 
     const data = await res.json();
@@ -268,9 +303,18 @@ export async function fetchWeatherData(
     const result = { current, hourly, daily, source: 'LIVE' as DataSourceLabel };
     cache.set(cacheKey, { timestamp: Date.now(), ...result });
     return result;
-  } catch (err) {
-    console.warn('Weather live fetch failed or timed out, using calibrated modelled data:', err);
+  } catch (_err) {
+    if (cached) {
+      return {
+        current: cached.current,
+        hourly: cached.hourly,
+        daily: cached.daily,
+        source: cached.current.source,
+      };
+    }
     const fallback = getFallbackModelledWeather(lat, lng);
-    return { ...fallback, source: 'MODELLED' };
+    const result = { ...fallback, source: 'MODELLED' as DataSourceLabel };
+    cache.set(cacheKey, { timestamp: Date.now(), ...result });
+    return result;
   }
 }

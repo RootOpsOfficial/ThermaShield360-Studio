@@ -27,6 +27,7 @@ import {
   getHealthcareSettings,
   updateHealthcareSettings,
 } from './src/server/healthcareWorkspaceService.js';
+import { ALL_LOCATIONS } from './src/data/allLocations.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1203,6 +1204,220 @@ app.get('/api/healthcare/nearby', async (req: Request, res: Response) => {
   }
 });
 
+// Endpoint to search any location in India
+app.get('/api/healthcare/search-locations', async (req: Request, res: Response) => {
+  try {
+    const q = ((req.query.q as string) || '').trim().toLowerCase();
+    if (!q) {
+      return res.json(ALL_LOCATIONS.slice(0, 35));
+    }
+
+    // 1. Matches from local comprehensive index
+    const localMatches = ALL_LOCATIONS.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        l.shortName.toLowerCase().includes(q) ||
+        l.city.toLowerCase().includes(q) ||
+        l.state.toLowerCase().includes(q)
+    );
+
+    // If we have enough matches, return them immediately
+    if (localMatches.length >= 6) {
+      return res.json(localMatches.slice(0, 35));
+    }
+
+    // 2. Query Nominatim for specific Indian addresses / small towns
+    try {
+      const nomRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=in&format=json&limit=8&addressdetails=1`,
+        { headers: { 'User-Agent': 'ThermaShield-Healthcare/1.0' } }
+      );
+      if (nomRes.ok) {
+        const nomData: any = await nomRes.json();
+        if (Array.isArray(nomData)) {
+          const remoteResults = nomData.map((item, idx) => {
+            const parts = item.display_name.split(',');
+            const short = parts.slice(0, 2).join(',').trim();
+            const state = parts[parts.length - 2]?.trim() || 'India';
+            return {
+              id: `nom-${item.place_id || idx}`,
+              name: item.display_name,
+              shortName: short,
+              city: parts[0]?.trim() || short,
+              state: state,
+              lat: parseFloat(item.lat),
+              lng: parseFloat(item.lon),
+              category: 'india',
+            };
+          });
+
+          // Combine and deduplicate
+          const combined = [...localMatches];
+          for (const rem of remoteResults) {
+            if (!combined.some((c) => Math.abs(c.lat - rem.lat) < 0.01 && Math.abs(c.lng - rem.lng) < 0.01)) {
+              combined.push(rem as any);
+            }
+          }
+          return res.json(combined.slice(0, 35));
+        }
+      }
+    } catch (nomErr) {
+      console.warn('Nominatim search failed:', nomErr);
+    }
+
+    return res.json(localMatches);
+  } catch (err) {
+    console.error('Error in /api/healthcare/search-locations:', err);
+    res.status(500).json({ error: 'Failed to search locations' });
+  }
+});
+
+// Dedicated Location Heat Check API for Healthcare Command Center Map
+app.get('/api/healthcare/location-heat-check', async (req: Request, res: Response) => {
+  try {
+    const query = ((req.query.q as string) || (req.query.location as string) || '').trim();
+    let lat = parseFloat(req.query.lat as string);
+    let lng = parseFloat((req.query.lng as string) || (req.query.lon as string));
+    let resolvedName = query;
+    let shortName = query;
+
+    const queryKey = query.toLowerCase();
+
+    // 1. Check comprehensive allLocations index first
+    const matchedFromAllLocations = ALL_LOCATIONS.find(
+      (l) =>
+        l.name.toLowerCase() === queryKey ||
+        l.shortName.toLowerCase() === queryKey ||
+        l.id.toLowerCase() === queryKey ||
+        queryKey.includes(l.shortName.toLowerCase()) ||
+        l.name.toLowerCase().includes(queryKey)
+    );
+
+    if (matchedFromAllLocations && (isNaN(lat) || isNaN(lng))) {
+      lat = matchedFromAllLocations.lat;
+      lng = matchedFromAllLocations.lng;
+      resolvedName = matchedFromAllLocations.name;
+      shortName = matchedFromAllLocations.shortName;
+    } else if (query && (isNaN(lat) || isNaN(lng))) {
+      // Query Nominatim for any road/locality/village/area across India
+      try {
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&countrycodes=in&format=json&limit=1&addressdetails=1`,
+          { headers: { 'User-Agent': 'ThermaShield-Healthcare/1.0' } }
+        );
+        if (nomRes.ok) {
+          const nomData: any = await nomRes.json();
+          if (Array.isArray(nomData) && nomData.length > 0) {
+            lat = parseFloat(nomData[0].lat);
+            lng = parseFloat(nomData[0].lon);
+            resolvedName = nomData[0].display_name;
+            const parts = resolvedName.split(',');
+            shortName = parts.slice(0, 2).join(',').trim();
+          }
+        }
+      } catch (err) {
+        console.warn('Nominatim geocode fallback failed:', err);
+      }
+    }
+
+    // Default fallback if still unresolved
+    if (isNaN(lat) || isNaN(lng) || lat < 1 || lat > 85 || lng < -180 || lng > 180) {
+      lat = 18.5204;
+      lng = 73.8567;
+      resolvedName = 'Pune Municipal Area, Maharashtra';
+      shortName = 'Pune';
+    } else if (!resolvedName) {
+      resolvedName = `Location (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`;
+      shortName = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
+    }
+
+    // Fetch real weather from weatherService
+    const weatherData = await fetchWeatherData(lat, lng);
+    const current = weatherData.current;
+    const dailyToday = weatherData.daily?.[0];
+
+    // Compute thermal stresses
+    const currentWbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, current.windSpeed);
+    const currentUtci = calculateUTCI(current.temp, current.humidity, current.windSpeed, current.solarIrradiance);
+    const currentStress = categorizeThermalStress(currentWbgt, currentUtci);
+
+    const peakTemp = dailyToday ? dailyToday.tempMax : Math.max(current.temp, 38.5);
+    const peakFeelsLike = dailyToday ? dailyToday.feelsLikeMax : current.feelsLike;
+    const peakStress = dailyToday ? dailyToday.riskLevel : 'High';
+
+    // Helper to evaluate heat risk level: High (Red), Moderate (Yellow), Low (Green)
+    const evaluateHeat = (temp: number, feelsLike: number, stress: string) => {
+      if (stress === 'Critical' || stress === 'High' || temp >= 37.0 || feelsLike >= 39.0) {
+        return {
+          level: 'High' as const,
+          circleColor: 'red' as const,
+          hex: '#EF4444',
+          label: 'High Heat Risk',
+          badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+          advice: 'High thermal hazard. Prolonged exposure poses serious heat strain and dehydration risk.',
+        };
+      }
+      if (stress === 'Moderate' || temp >= 32.0 || feelsLike >= 35.0) {
+        return {
+          level: 'Moderate' as const,
+          circleColor: 'yellow' as const,
+          hex: '#EAB308',
+          label: 'Moderate Heat Risk',
+          badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+          advice: 'Moderate thermal stress. Caution advised during peak afternoon sunshine.',
+        };
+      }
+      return {
+        level: 'Low' as const,
+        circleColor: 'green' as const,
+        hex: '#22C55E',
+        label: 'Low Heat Risk',
+        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        advice: 'Normal thermal conditions. Safe for ordinary outdoor activity.',
+      };
+    };
+
+    const currentHeat = evaluateHeat(current.temp, current.feelsLike, currentStress);
+    const peakHeat = evaluateHeat(peakTemp, peakFeelsLike, peakStress);
+
+    // Compute rich health demand drivers for this location
+    const healthcareSummary = await getHealthcareSummary(lat, lng, resolvedName, req.query.isUserLocation === 'true');
+
+    res.json({
+      location: {
+        name: resolvedName,
+        shortName,
+        lat,
+        lng,
+        isUserLocation: req.query.isUserLocation === 'true',
+      },
+      current: {
+        temp: current.temp,
+        feelsLike: current.feelsLike,
+        humidity: current.humidity,
+        windSpeed: current.windSpeed,
+        weatherDescription: current.weatherDescription,
+        wbgt: currentWbgt,
+        utci: currentUtci,
+        heat: currentHeat,
+      },
+      peak: {
+        tempMax: peakTemp,
+        feelsLikeMax: peakFeelsLike,
+        heat: peakHeat,
+      },
+      activeHeat: currentHeat,
+      demandDrivers: healthcareSummary.locationDemandDrivers,
+      highRiskAreas: healthcareSummary.highRiskAreas,
+      demandCapacity: healthcareSummary.demandCapacity,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Error in /api/healthcare/location-heat-check:', err);
+    res.status(500).json({ error: 'Failed to check location heat risk' });
+  }
+});
+
 // 12b. GET /api/healthcare/:id
 app.get('/api/healthcare/:id', async (req: Request, res: Response) => {
   try {
@@ -1392,8 +1607,24 @@ app.get('/api/alerts/history', (req: Request, res: Response) => {
 // --- HEALTHCARE WORKSPACE API ---
 app.get('/api/healthcare/workspace/summary', async (req: Request, res: Response) => {
   try {
-    const { lat, lng } = parseCoords(req);
-    const summary = await getHealthcareSummary(lat, lng);
+    const latStr = req.query.lat as string;
+    const lngStr = (req.query.lng as string) || (req.query.lon as string);
+    const q = ((req.query.q as string) || (req.query.location as string) || '').trim();
+    const isUserLocation = req.query.isUserLocation === 'true';
+
+    let lat: number;
+    let lng: number;
+
+    if (latStr && lngStr && !isNaN(parseFloat(latStr)) && !isNaN(parseFloat(lngStr))) {
+      lat = parseFloat(latStr);
+      lng = parseFloat(lngStr);
+    } else {
+      const coords = parseCoords(req);
+      lat = coords.lat;
+      lng = coords.lng;
+    }
+
+    const summary = await getHealthcareSummary(lat, lng, q, isUserLocation);
     res.json(summary);
   } catch (err) {
     console.error('Error in /api/healthcare/workspace/summary:', err);

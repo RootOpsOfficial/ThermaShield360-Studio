@@ -54,7 +54,7 @@ export const WorkspacePortalPage: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col justify-center">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col justify-center">
         {/* Hero Section */}
         <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold tracking-wide uppercase bg-orange-100 text-orange-800 border border-orange-200/80 mb-3 shadow-xs">
@@ -65,12 +65,12 @@ export const WorkspacePortalPage: React.FC = () => {
             Select Your Workspace
           </h1>
           <p className="text-sm sm:text-base text-slate-500 font-medium mt-2 leading-relaxed">
-            Choose your operational environment to access tailored heat risk intelligence, municipal decision tools, or emergency medical facilities.
+            Choose your operational environment to access tailored heat risk intelligence, municipal decision tools, emergency medical facilities, or disaster command.
           </p>
         </div>
 
-        {/* 3 Prominent Cards: Citizen, Municipality, Healthcare */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+        {/* 4 Prominent Cards: Citizen, Municipality, Healthcare, Disaster Management Authority */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
           {/* 1. CITIZEN WORKSPACE */}
           <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-sm hover:shadow-xl hover:border-orange-300 transition-all duration-200 flex flex-col justify-between group relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-orange-400 via-amber-500 to-orange-600"></div>
@@ -234,6 +234,62 @@ export const WorkspacePortalPage: React.FC = () => {
                 className="w-full py-3 px-4 rounded-2xl bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] text-white text-xs sm:text-sm font-bold shadow-md shadow-emerald-700/20 flex items-center justify-center gap-2 transition-all"
               >
                 <span>Enter Healthcare Workspace</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
+          </div>
+
+          {/* 4. DISASTER MANAGEMENT AUTHORITY WORKSPACE */}
+          <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-sm hover:shadow-xl hover:border-red-400 transition-all duration-200 flex flex-col justify-between group relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600"></div>
+
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center border border-red-100 shadow-xs group-hover:scale-110 transition-transform">
+                  <ShieldAlert className="w-6 h-6 text-red-700" />
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-red-50 text-red-800 border border-red-200">
+                  COMMAND AUTHORITY
+                </span>
+              </div>
+
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                Disaster Authority
+              </h2>
+              <p className="text-xs font-semibold text-red-700 mt-0.5">
+                Emergency Command & Regional Response
+              </p>
+              <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">
+                For state & district disaster management authorities (SDMA/DDMA) to coordinate regional heat threats, health surge, and multi-agency response.
+              </p>
+
+              {/* Feature Checklist */}
+              <div className="mt-5 space-y-2 pt-4 border-t border-slate-100 text-xs">
+                <div className="flex items-start gap-2 text-slate-700">
+                  <CheckCircle2 className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <span>Emergency Command & 4 core summary cards</span>
+                </div>
+                <div className="flex items-start gap-2 text-slate-700">
+                  <CheckCircle2 className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <span>Large regional heat severity GIS map</span>
+                </div>
+                <div className="flex items-start gap-2 text-slate-700">
+                  <CheckCircle2 className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <span>High-Risk Areas directory & incident side panel</span>
+                </div>
+                <div className="flex items-start gap-2 text-slate-700">
+                  <CheckCircle2 className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <span>Inter-agency alerts, escalation & response tracking</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-4">
+              <button
+                onClick={() => setWorkspace('disaster')}
+                className="w-full py-3 px-4 rounded-2xl bg-red-700 hover:bg-red-800 active:scale-[0.99] text-white text-xs sm:text-sm font-bold shadow-md shadow-red-700/20 flex items-center justify-center gap-2 transition-all"
+              >
+                <span>Enter Disaster Authority</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
             </div>

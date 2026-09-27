@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
-export type WorkspaceType = 'portal' | 'citizen' | 'municipal' | 'healthcare';
+export type WorkspaceType = 'login' | 'portal' | 'citizen' | 'municipal' | 'healthcare' | 'disaster';
 
 interface WorkspaceContextType {
   workspace: WorkspaceType;
   setWorkspace: (ws: WorkspaceType) => void;
   openPortal: () => void;
+  openLogin: () => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -15,6 +16,12 @@ function getInitialWorkspace(): WorkspaceType {
   try {
     const hash = window.location.hash.toLowerCase();
     const path = window.location.pathname.toLowerCase();
+    if (hash.includes('login') || path.includes('login')) {
+      return 'login';
+    }
+    if (hash.includes('disaster') || path.includes('disaster')) {
+      return 'disaster';
+    }
     if (
       hash.includes('municipality') ||
       hash.includes('municipal') ||
@@ -36,18 +43,31 @@ function getInitialWorkspace(): WorkspaceType {
     // ignore
   }
 
-  // 2. Check localStorage
+  // 2. Check session: if not authenticated, default to login
   try {
-    const saved = localStorage.getItem('thermashield_workspace') as WorkspaceType;
-    if (saved === 'municipal' || saved === 'citizen' || saved === 'healthcare') {
-      return saved;
+    const session = localStorage.getItem('thermashield_session');
+    if (!session) {
+      return 'login';
     }
   } catch {
     // ignore
   }
 
-  // Default to the 1st selection portal page
-  return 'portal';
+  // 3. Check localStorage for saved workspace
+  try {
+    const saved = localStorage.getItem('thermashield_workspace') as WorkspaceType;
+    if (saved === 'municipal' || saved === 'citizen' || saved === 'healthcare' || saved === 'disaster') {
+      return saved;
+    }
+    if (saved === 'portal') {
+      return 'portal';
+    }
+  } catch {
+    // ignore
+  }
+
+  // Default to login on fresh open
+  return 'login';
 }
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -57,7 +77,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setWorkspaceState((prev) => {
       if (prev === ws) return prev;
       try {
-        if (ws === 'portal') {
+        if (ws === 'portal' || ws === 'login') {
           localStorage.removeItem('thermashield_workspace');
         } else {
           localStorage.setItem('thermashield_workspace', ws);
@@ -73,8 +93,12 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setWorkspace('portal');
   }, [setWorkspace]);
 
+  const openLogin = useCallback(() => {
+    setWorkspace('login');
+  }, [setWorkspace]);
+
   return (
-    <WorkspaceContext.Provider value={{ workspace, setWorkspace, openPortal }}>
+    <WorkspaceContext.Provider value={{ workspace, setWorkspace, openPortal, openLogin }}>
       {children}
     </WorkspaceContext.Provider>
   );

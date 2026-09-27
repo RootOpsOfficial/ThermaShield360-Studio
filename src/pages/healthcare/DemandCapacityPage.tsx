@@ -11,10 +11,18 @@ import {
   Building,
   Clock,
   Info,
+  Crosshair,
+  RefreshCw,
 } from 'lucide-react';
 
 export const DemandCapacityPage: React.FC = () => {
-  const { summary, setActiveHealthcarePage } = useHealthcare();
+  const {
+    summary,
+    setActiveHealthcarePage,
+    currentLocation,
+    detectUserGpsLocation,
+    isLocatingGps,
+  } = useHealthcare();
 
   if (!summary) return null;
 
@@ -31,9 +39,14 @@ export const DemandCapacityPage: React.FC = () => {
             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
               CAPACITY BALANCING & SURGE
             </span>
-            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-              HOSPITAL NETWORK LEVEL
+            <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+              📍 Driven by: {currentLocation.shortName}
             </span>
+            {currentLocation.isUserLocation && (
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                User GPS
+              </span>
+            )}
             <span
               className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
                 isEntered
@@ -48,11 +61,26 @@ export const DemandCapacityPage: React.FC = () => {
             Expected Heat Demand vs Available Capacity
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-            Real-time balance of anticipated emergency presentations against available acute heatstroke beds and clinical capacity.
+            Real-time balance of anticipated emergency presentations for {currentLocation.shortName} against operational heatstroke beds and clinical capacity.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-center">
+          <button
+            type="button"
+            onClick={detectUserGpsLocation}
+            disabled={isLocatingGps}
+            title="Drive health demand from current GPS location"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all border border-emerald-200 cursor-pointer disabled:opacity-50"
+          >
+            {isLocatingGps ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Crosshair className="w-3.5 h-3.5 text-emerald-600" />
+            )}
+            <span>{isLocatingGps ? 'Locating...' : 'My GPS'}</span>
+          </button>
+
           <button
             onClick={() => setActiveHealthcarePage('facility-profile')}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all border border-slate-200"

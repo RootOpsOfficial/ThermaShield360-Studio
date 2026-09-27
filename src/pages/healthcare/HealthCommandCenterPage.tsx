@@ -1,5 +1,6 @@
 import React from 'react';
 import { useHealthcare } from '../../context/HealthcareContext.js';
+import { LocationHeatRiskMap } from '../../components/healthcare/LocationHeatRiskMap.js';
 import {
   Activity,
   HeartPulse,
@@ -16,6 +17,7 @@ import {
   Calendar,
   Building,
   Users,
+  Crosshair,
 } from 'lucide-react';
 
 export const HealthCommandCenterPage: React.FC = () => {
@@ -26,6 +28,10 @@ export const HealthCommandCenterPage: React.FC = () => {
     refreshHealthcareData,
     setActiveHealthcarePage,
     setSelectedRiskArea,
+    currentLocation,
+    setLocation,
+    detectUserGpsLocation,
+    isLocatingGps,
   } = useHealthcare();
 
   if (isLoading || !summary) {
@@ -38,7 +44,7 @@ export const HealthCommandCenterPage: React.FC = () => {
     );
   }
 
-  const { cards, fiveDayOutlook, highRiskAreas, facilityReadiness, demandCapacity, currentAction, activeAlert } = summary;
+  const { cards, fiveDayOutlook, highRiskAreas, facilityReadiness, demandCapacity, currentAction, activeAlert, locationDemandDrivers } = summary;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -50,22 +56,6 @@ export const HealthCommandCenterPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
               HEALTH COMMAND CENTER
-            </span>
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-              WEATHER: LIVE API
-            </span>
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-              MODELLED HEALTH IMPACT
-            </span>
-            <span
-              className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                demandCapacity.isCapacityEntered
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : 'bg-rose-50 text-rose-800 border-rose-200'
-              }`}
-            >
-              {demandCapacity.isCapacityEntered ? 'CAPACITY: FACILITY ENTERED' : 'CAPACITY: NOT YET PROVIDED'}
             </span>
           </div>
 
@@ -84,10 +74,6 @@ export const HealthCommandCenterPage: React.FC = () => {
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3 text-slate-400" />
               {summary.dateTime}
-            </span>
-            <span>•</span>
-            <span className="text-slate-500 font-medium">
-              Data Status: {summary.dataStatus}
             </span>
           </div>
         </div>
@@ -313,32 +299,147 @@ export const HealthCommandCenterPage: React.FC = () => {
       </div>
 
       {/* ============================================================ */}
+      {/* LOCATION HEAT RISK MAP & CHECKER (USER CHOICE MAP)           */}
+      {/* ============================================================ */}
+      <LocationHeatRiskMap />
+
+      {/* ============================================================ */}
       {/* MAIN HOME AREA: HIGH-RISK AREAS & FACILITY READINESS          */}
       {/* ============================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-        {/* LEFT: HIGH-RISK AREAS (6 Cols) */}
+        {/* LEFT: HEALTH DEMAND DRIVERS BASED ON LOCATION (6 Cols) */}
         <div className="lg:col-span-6 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 mb-3 gap-2">
               <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-orange-600">
-                  HEALTH DEMAND DRIVERS
-                </span>
-                <h3 className="text-base font-bold text-slate-900 mt-0.5">
-                  High-Risk Areas
+                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+                    HEALTH DEMAND DRIVERS
+                  </span>
+                  {currentLocation.isUserLocation ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      User Location (GPS)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md truncate max-w-[190px]">
+                      📍 {currentLocation.shortName}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-base font-bold text-slate-900 mt-0.5 flex items-center gap-1.5">
+                  <span>Driven by: {currentLocation.shortName}</span>
                 </h3>
+                <p className="text-[11px] text-slate-500 truncate max-w-sm">
+                  {currentLocation.name}
+                </p>
               </div>
 
-              <button
-                onClick={() => setActiveHealthcarePage('risk-areas')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all"
-              >
-                <span>View All Areas</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center">
+                <button
+                  type="button"
+                  onClick={detectUserGpsLocation}
+                  disabled={isLocatingGps}
+                  title="Detect and drive demand from your current GPS location"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all border border-emerald-200 cursor-pointer disabled:opacity-50 shadow-2xs"
+                >
+                  {isLocatingGps ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Crosshair className="w-3.5 h-3.5 text-emerald-600" />
+                  )}
+                  <span className="text-[11px]">{isLocatingGps ? 'Locating...' : 'My GPS'}</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveHealthcarePage('risk-areas')}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer"
+                >
+                  <span>All Areas</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
             </div>
 
+            {/* TELEMETRY DRIVERS STRIP */}
+            {locationDemandDrivers && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                <div className="p-2.5 rounded-2xl bg-orange-50/70 border border-orange-200/80">
+                  <span className="text-[10px] font-bold text-orange-900 block uppercase">Expected Demand</span>
+                  <span className="text-sm font-black text-slate-900 mt-0.5 block">
+                    {locationDemandDrivers.expectedDailyPatientDemand} <span className="text-[10px] font-bold text-slate-500">pts/day</span>
+                  </span>
+                  <span className="text-[10px] font-extrabold text-orange-700">{locationDemandDrivers.surgeStatus}</span>
+                </div>
+
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] font-bold text-slate-600 block uppercase">Thermal WBGT</span>
+                  <span className="text-sm font-black text-slate-900 mt-0.5 block">
+                    {locationDemandDrivers.wbgt.toFixed(1)}°C
+                  </span>
+                  <span
+                    className={`text-[10px] font-extrabold ${
+                      locationDemandDrivers.thermalStressLevel === 'Critical' || locationDemandDrivers.thermalStressLevel === 'High'
+                        ? 'text-rose-600'
+                        : 'text-amber-700'
+                    }`}
+                  >
+                    {locationDemandDrivers.thermalStressLevel} Stress
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] font-bold text-slate-600 block uppercase">Microclimate UHI</span>
+                  <span className="text-sm font-black text-slate-900 mt-0.5 block">
+                    +{locationDemandDrivers.uhiOffsetDegC}°C
+                  </span>
+                  <span className="text-[10px] font-medium text-slate-500">Local surface trap</span>
+                </div>
+
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-[10px] font-bold text-slate-600 block uppercase">Vulnerable Total</span>
+                  <span className="text-sm font-black text-slate-900 mt-0.5 block">
+                    {(locationDemandDrivers.vulnerablePopulationTotal / 1000).toFixed(0)}k
+                  </span>
+                  <span className="text-[10px] font-medium text-slate-500">{locationDemandDrivers.builtDensityPct}% built density</span>
+                </div>
+              </div>
+            )}
+
+            {/* CLINICAL CASELOAD ESTIMATES FOR THIS LOCATION */}
+            {locationDemandDrivers?.clinicalCaseloadModel && (
+              <div className="p-2.5 rounded-2xl bg-blue-50/70 border border-blue-100 mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                  <span className="font-bold text-blue-950">Local Clinical Caseload:</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="font-semibold text-slate-700">
+                    OPD Dehydration: <strong className="text-blue-800">{locationDemandDrivers.clinicalCaseloadModel.heatExhaustionOPD}</strong>
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-semibold text-slate-700">
+                    ER Heatstroke: <strong className="text-rose-700">{locationDemandDrivers.clinicalCaseloadModel.heatStrokeEmergencyAdmissions}</strong>
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-semibold text-slate-700">
+                    Cardiac Strain: <strong className="text-amber-800">{locationDemandDrivers.clinicalCaseloadModel.cardiacStrainCases}</strong>
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* HIGH-RISK AREAS: WARD DEMOGRAPHIC MAPPING & RISK */}
             <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                  High-Risk Areas • Demographic Summary ({highRiskAreas.length} Monitored Wards)
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
+                  Census + Occupational + Health Estimates
+                </span>
+              </div>
+
               {highRiskAreas.slice(0, 4).map((area) => (
                 <div
                   key={area.wardId}
@@ -346,37 +447,91 @@ export const HealthCommandCenterPage: React.FC = () => {
                     setSelectedRiskArea(area);
                     setActiveHealthcarePage('risk-areas');
                   }}
-                  className="p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/90 border border-slate-100 transition-all cursor-pointer flex items-center justify-between"
+                  className="p-3 rounded-2xl bg-slate-50/90 hover:bg-slate-100/90 border border-slate-200/60 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
                 >
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">{area.wardName}</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Vulnerable: {area.vulnerablePopulation.toLocaleString()} citizens
-                    </p>
-                  </div>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                          HIGH-RISK AREA
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-900 truncate group-hover:text-emerald-800 transition-colors">
+                          {area.wardName}
+                        </h4>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                        {area.zone} • Population: {area.population ? area.population.toLocaleString() : 'N/A'}
+                      </p>
+                    </div>
 
-                  <div className="text-right">
                     <span
-                      className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                      className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
                         area.healthRisk === 'Critical'
                           ? 'bg-rose-100 text-rose-800'
-                          : 'bg-orange-100 text-orange-800'
+                          : area.healthRisk === 'High'
+                          ? 'bg-orange-100 text-orange-800'
+                          : 'bg-amber-100 text-amber-800'
                       }`}
                     >
                       {area.healthRisk} Risk
                     </span>
-                    <p className="text-[10px] font-bold text-slate-600 mt-1">
-                      Demand: <span className="text-blue-700">{area.expectedDemand}</span>
-                    </p>
+                  </div>
+
+                  {/* 5-Metric Compact Grid per Section 10 */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-center pt-2 border-t border-slate-200/50">
+                    <div className="bg-white/80 p-1.5 rounded-xl border border-slate-100">
+                      <span className="text-[9px] text-slate-400 font-bold uppercase block">Total Vuln</span>
+                      <span className="text-xs font-black text-rose-700 block">
+                        {(area.totalVulnerable || area.vulnerablePopulation || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/80 p-1.5 rounded-xl border border-slate-100">
+                      <span className="text-[9px] text-slate-400 font-bold uppercase block">Seniors 65+</span>
+                      <span className="text-xs font-bold text-slate-800 block">
+                        {(area.seniors65Plus || area.vulnerabilityBreakdown?.elderly65Plus || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/80 p-1.5 rounded-xl border border-slate-100">
+                      <span className="text-[9px] text-slate-400 font-bold uppercase block">Outdoor Wrk</span>
+                      <span className="text-xs font-bold text-slate-800 block">
+                        {(area.outdoorWorkers || area.vulnerabilityBreakdown?.outdoorWorkers || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/80 p-1.5 rounded-xl border border-slate-100">
+                      <span className="text-[9px] text-slate-400 font-bold uppercase block">Chronic Comorb</span>
+                      <span className="text-xs font-bold text-slate-800 block">
+                        {(area.chronicComorbidities || area.vulnerabilityBreakdown?.chronicConditions || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="col-span-2 sm:col-span-1 bg-white/80 p-1.5 rounded-xl border border-slate-100 flex items-center justify-center">
+                      <div className="text-center">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase block">Health Risk</span>
+                        <span
+                          className={`text-[10px] font-black uppercase ${
+                            area.healthRisk === 'Critical'
+                              ? 'text-rose-700'
+                              : area.healthRisk === 'High'
+                              ? 'text-orange-700'
+                              : 'text-amber-700'
+                          }`}
+                        >
+                          {area.healthRisk}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>Modelled from local UHI offset + built surface density</span>
-            <span className="font-semibold text-slate-600">6 Monitored Zones</span>
+          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex flex-wrap items-center justify-between gap-1">
+            <span>Modelled from real-time heat + built surface density at {currentLocation.shortName}</span>
+            <span className="font-semibold text-slate-600">Synced with Map & GPS</span>
           </div>
         </div>
 
@@ -571,7 +726,7 @@ export const HealthCommandCenterPage: React.FC = () => {
 
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
           <span className="text-[11px] text-slate-400">
-            Forward projection across 6 monitored urban hospitals
+            Forward projection calibrated for {currentLocation.shortName} ({demandCapacity.expectedDemandPatients} modeled patient demand / day)
           </span>
           <button
             onClick={() => setActiveHealthcarePage('demand-capacity')}

@@ -1,18 +1,25 @@
 import React, { useEffect, useRef } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext.js';
+import { NavigationHistoryProvider, useNavigationHistory } from './context/NavigationHistoryContext.js';
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext.js';
 import { CitizenProvider, useCitizen } from './context/CitizenContext.js';
 import { MunicipalProvider, useMunicipal } from './context/MunicipalContext.js';
 import { HealthcareProvider, useHealthcare } from './context/HealthcareContext.js';
+import { DisasterProvider, useDisaster } from './context/DisasterContext.js';
 import { TopHeader } from './components/TopHeader.js';
 import { CitizenSidebar } from './components/CitizenSidebar.js';
 import { MunicipalSidebar } from './components/MunicipalSidebar.js';
 import { HealthcareSidebar } from './components/HealthcareSidebar.js';
+import { DisasterSidebar } from './components/DisasterSidebar.js';
 import { AlertDrawer } from './components/AlertDrawer.js';
 import { CitizenPage } from './types.js';
 import { MunicipalNavPage } from './types/municipal.js';
 import { HealthcareNavPage } from './types/healthcare.js';
+import { DisasterNavPage } from './types/disaster.js';
 
-// 1st Page: Workspace Selector Portal
+// Login & User Selection Pages
+import { LoginPage } from './pages/LoginPage.js';
+import { UserSelectionPage } from './pages/UserSelectionPage.js';
 import { WorkspacePortalPage } from './pages/WorkspacePortalPage.js';
 
 // Citizen Pages (Preserved 100%)
@@ -49,31 +56,50 @@ import { DemandCapacityPage } from './pages/healthcare/DemandCapacityPage.js';
 import { HealthAlertsPage } from './pages/healthcare/HealthAlertsPage.js';
 import { HealthcareSettingsPage } from './pages/healthcare/HealthcareSettingsPage.js';
 
+// Disaster Management Authority Pages (Emergency Command Edition)
+import { EmergencyCommandPage } from './pages/disaster/EmergencyCommandPage.js';
+import { HeatSituationPage } from './pages/disaster/HeatSituationPage.js';
+import { DisasterHighRiskAreasPage } from './pages/disaster/DisasterHighRiskAreasPage.js';
+import { DisasterHealthImpactPage } from './pages/disaster/DisasterHealthImpactPage.js';
+import { DisasterProtectionShortfallPage } from './pages/disaster/DisasterProtectionShortfallPage.js';
+import { AlertsEscalationPage } from './pages/disaster/AlertsEscalationPage.js';
+import { ResponseTrackingPage } from './pages/disaster/ResponseTrackingPage.js';
+import { DisasterSettingsPage } from './pages/disaster/DisasterSettingsPage.js';
+
 // Route coordinator component mounted ONCE at App root to keep URL and state in sync without re-render loops
 const RouteCoordinator: React.FC = () => {
   const { workspace, setWorkspace } = useWorkspace();
   const { activePage, setActivePage } = useCitizen();
   const { activeMunicipalPage, setActiveMunicipalPage } = useMunicipal();
   const { activeHealthcarePage, setActiveHealthcarePage } = useHealthcare();
+  const { activeDisasterPage, setActiveDisasterPage } = useDisaster();
+  const { recordNavigation } = useNavigationHistory();
 
   const workspaceRef = useRef(workspace);
   const activePageRef = useRef(activePage);
   const activeMunicipalPageRef = useRef(activeMunicipalPage);
   const activeHealthcarePageRef = useRef(activeHealthcarePage);
+  const activeDisasterPageRef = useRef(activeDisasterPage);
   const isUpdatingHashRef = useRef(false);
+  const isPopstateRef = useRef(false);
 
   useEffect(() => {
     workspaceRef.current = workspace;
     activePageRef.current = activePage;
     activeMunicipalPageRef.current = activeMunicipalPage;
     activeHealthcarePageRef.current = activeHealthcarePage;
-  }, [workspace, activePage, activeMunicipalPage, activeHealthcarePage]);
+    activeDisasterPageRef.current = activeDisasterPage;
+  }, [workspace, activePage, activeMunicipalPage, activeHealthcarePage, activeDisasterPage]);
 
   // Sync state to URL hash
   useEffect(() => {
-    let targetHash = '#select';
-    if (workspace === 'portal') {
+    let targetHash = '#login';
+    if (workspace === 'login') {
+      targetHash = '#login';
+    } else if (workspace === 'portal') {
       targetHash = '#select';
+    } else if (workspace === 'disaster') {
+      targetHash = `#disaster/${activeDisasterPage}`;
     } else if (workspace === 'healthcare') {
       targetHash = `#healthcare/${activeHealthcarePage}`;
     } else if (workspace === 'municipal') {
@@ -83,34 +109,72 @@ const RouteCoordinator: React.FC = () => {
     }
 
     if (window.location.hash !== targetHash) {
-      isUpdatingHashRef.current = true;
-      try {
-        window.history.replaceState(null, '', targetHash);
-      } catch {
-        try {
-          window.location.hash = targetHash;
-        } catch {
-          // ignore
-        }
+      if (isPopstateRef.current) {
+        isPopstateRef.current = false;
+        return;
       }
+
+      isUpdatingHashRef.current = true;
+      recordNavigation(targetHash);
       setTimeout(() => {
         isUpdatingHashRef.current = false;
       }, 50);
     }
-  }, [workspace, activePage, activeMunicipalPage, activeHealthcarePage]);
+  }, [workspace, activePage, activeMunicipalPage, activeHealthcarePage, activeDisasterPage, recordNavigation]);
 
   // Listen for browser back/forward or manual hash change
   useEffect(() => {
     const handleHashChange = () => {
       if (isUpdatingHashRef.current) return;
+      isPopstateRef.current = true;
 
       const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
       const pathname = window.location.pathname.replace(/^\//, '').toLowerCase();
       const target = hash || pathname;
 
-      if (target.startsWith('select') || target.startsWith('portal') || target === '') {
+      if (target.startsWith('login')) {
+        if (workspaceRef.current !== 'login') {
+          setWorkspace('login');
+        }
+      } else if (target.startsWith('select') || target.startsWith('portal')) {
         if (workspaceRef.current !== 'portal') {
           setWorkspace('portal');
+        }
+      } else if (target === '') {
+        const hasSession = !!localStorage.getItem('thermashield_session');
+        const defaultWs = hasSession ? 'portal' : 'login';
+        if (workspaceRef.current !== defaultWs) {
+          setWorkspace(defaultWs);
+        }
+      } else if (target.startsWith('disaster')) {
+        if (workspaceRef.current !== 'disaster') {
+          setWorkspace('disaster');
+        }
+        const sub = target.split('/')[1] || 'command';
+        const validDisasterPages: Record<string, DisasterNavPage> = {
+          command: 'command',
+          'command-center': 'command',
+          'emergency-command': 'command',
+          home: 'command',
+          'heat-situation': 'heat-situation',
+          situation: 'heat-situation',
+          'high-risk-areas': 'high-risk-areas',
+          'risk-areas': 'high-risk-areas',
+          'health-impact': 'health-impact',
+          impact: 'health-impact',
+          'protection-shortfall': 'protection-shortfall',
+          shortfall: 'protection-shortfall',
+          'alerts-escalation': 'alerts-escalation',
+          alerts: 'alerts-escalation',
+          escalation: 'alerts-escalation',
+          'response-tracking': 'response-tracking',
+          response: 'response-tracking',
+          tracking: 'response-tracking',
+          settings: 'settings',
+        };
+        const resolved = validDisasterPages[sub] || 'command';
+        if (activeDisasterPageRef.current !== resolved) {
+          setActiveDisasterPage(resolved);
         }
       } else if (target.startsWith('healthcare')) {
         if (workspaceRef.current !== 'healthcare') {
@@ -198,7 +262,7 @@ const RouteCoordinator: React.FC = () => {
       window.removeEventListener('popstate', handleHashChange);
       window.removeEventListener('hashchange', handleHashChange);
     };
-  }, [setWorkspace, setActivePage, setActiveMunicipalPage, setActiveHealthcarePage]);
+  }, [setWorkspace, setActivePage, setActiveMunicipalPage, setActiveHealthcarePage, setActiveDisasterPage]);
 
   return null;
 };
@@ -208,10 +272,16 @@ const MainContent: React.FC = () => {
   const { activePage } = useCitizen();
   const { activeMunicipalPage } = useMunicipal();
   const { activeHealthcarePage } = useHealthcare();
+  const { activeDisasterPage } = useDisaster();
 
-  // 1st Page: Portal for workspace selection (Citizen, Municipality, Healthcare)
+  // 0. Login Page
+  if (workspace === 'login') {
+    return <LoginPage />;
+  }
+
+  // 1. User Selection & Workspace Selector
   if (workspace === 'portal') {
-    return <WorkspacePortalPage />;
+    return <UserSelectionPage />;
   }
 
   const renderCitizenPage = () => {
@@ -291,6 +361,30 @@ const MainContent: React.FC = () => {
     }
   };
 
+  const renderDisasterPage = () => {
+    switch (activeDisasterPage) {
+      case 'command':
+        return <EmergencyCommandPage />;
+      case 'heat-situation':
+        return <HeatSituationPage />;
+      case 'high-risk-areas':
+        return <DisasterHighRiskAreasPage />;
+      case 'health-impact':
+        return <DisasterHealthImpactPage />;
+      case 'protection-shortfall':
+        return <DisasterProtectionShortfallPage />;
+      case 'alerts-escalation':
+        return <AlertsEscalationPage />;
+      case 'response-tracking':
+        return <ResponseTrackingPage />;
+      case 'settings':
+        return <DisasterSettingsPage />;
+      default:
+        return <EmergencyCommandPage />;
+    }
+  };
+
+  const isDisaster = workspace === 'disaster';
   const isMunicipal = workspace === 'municipal';
   const isHealthcare = workspace === 'healthcare';
 
@@ -301,7 +395,9 @@ const MainContent: React.FC = () => {
 
       {/* Main Layout: Sidebar + Page Container */}
       <div className="flex-1 flex max-w-[1600px] w-full mx-auto pb-16 md:pb-0">
-        {isMunicipal ? (
+        {isDisaster ? (
+          <DisasterSidebar />
+        ) : isMunicipal ? (
           <MunicipalSidebar />
         ) : isHealthcare ? (
           <HealthcareSidebar />
@@ -310,7 +406,9 @@ const MainContent: React.FC = () => {
         )}
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 mx-auto w-full max-w-7xl">
-          {isMunicipal ? (
+          {isDisaster ? (
+            renderDisasterPage()
+          ) : isMunicipal ? (
             renderMunicipalPage()
           ) : isHealthcare ? (
             renderHealthcarePage()
@@ -328,15 +426,21 @@ const MainContent: React.FC = () => {
 
 export default function App() {
   return (
-    <WorkspaceProvider>
-      <CitizenProvider>
-        <MunicipalProvider>
-          <HealthcareProvider>
-            <RouteCoordinator />
-            <MainContent />
-          </HealthcareProvider>
-        </MunicipalProvider>
-      </CitizenProvider>
-    </WorkspaceProvider>
+    <AuthProvider>
+      <NavigationHistoryProvider>
+        <WorkspaceProvider>
+          <CitizenProvider>
+            <MunicipalProvider>
+              <HealthcareProvider>
+                <DisasterProvider>
+                  <RouteCoordinator />
+                  <MainContent />
+                </DisasterProvider>
+              </HealthcareProvider>
+            </MunicipalProvider>
+          </CitizenProvider>
+        </WorkspaceProvider>
+      </NavigationHistoryProvider>
+    </AuthProvider>
   );
 }

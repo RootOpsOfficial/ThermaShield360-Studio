@@ -85,6 +85,12 @@ export interface HealthcareRiskArea {
   wardName: string;
   zone: string;
   center: [number, number];
+  population: number;
+  seniors65Plus: number;
+  workers: number;
+  outdoorWorkers: number;
+  chronicComorbidities: number;
+  totalVulnerable: number;
   heatRisk: 'Critical' | 'High' | 'Moderate' | 'Low';
   healthRisk: 'Critical' | 'High' | 'Moderate' | 'Low';
   expectedDemand: 'Critical Surge' | 'High Surge' | 'Moderate' | 'Baseline';
@@ -97,6 +103,16 @@ export interface HealthcareRiskArea {
     chronicConditions: number;
   };
   recommendedHealthAction: string;
+  thermalStress?: string;
+  riskTrend?: 'Rising' | 'Stable' | 'Easing' | 'Decreasing';
+  sources: {
+    seniors65Plus: string;
+    outdoorWorkers: string;
+    chronicComorbidities: string;
+    totalVulnerable: string;
+    healthRisk: string;
+  };
+  updatedAt?: string;
 }
 
 export interface ReadinessMetricItem {
@@ -221,6 +237,14 @@ export interface HealthcareSummary {
   highRiskAreas: HealthcareRiskArea[];
   facilityReadiness: HealthcareFacilityReadiness;
   demandCapacity: HealthcareDemandCapacity;
+  activeLocation?: {
+    name: string;
+    shortName: string;
+    lat: number;
+    lng: number;
+    isUserLocation?: boolean;
+  };
+  locationDemandDrivers?: HealthcareLocationDemandDrivers;
   currentAction: {
     what: string;
     where: string;
@@ -229,6 +253,39 @@ export interface HealthcareSummary {
     status: string;
   };
   activeAlert: HealthcareAlert;
+}
+
+export interface HealthcareLocationDemandDrivers {
+  locationName: string;
+  shortName: string;
+  isUserLocation: boolean;
+  thermalStressLevel: 'Critical' | 'High' | 'Moderate' | 'Low';
+  wbgt: number;
+  utci: number;
+  ambientTemp: number;
+  peakTemp: number;
+  feelsLike: number;
+  humidity: number;
+  uhiOffsetDegC: number;
+  builtDensityPct: number;
+  expectedDailyPatientDemand: number;
+  surgeStatus: 'Critical Surge' | 'High Surge' | 'Moderate' | 'Baseline';
+  vulnerablePopulationTotal: number;
+  vulnerabilityBreakdown: {
+    elderly65Plus: number;
+    outdoorWorkers: number;
+    chronicConditions: number;
+    pediatricAndPregnant: number;
+  };
+  clinicalCaseloadModel: {
+    heatExhaustionOPD: number;
+    heatStrokeEmergencyAdmissions: number;
+    electrolyteDehydrationCases: number;
+    cardiacStrainCases: number;
+  };
+  primaryDemandDrivers: string[];
+  localSubAreas: HealthcareRiskArea[];
+  recommendedInterventions: string[];
 }
 
 export interface HealthcareSettings {

@@ -23,6 +23,7 @@ import {
 
 export type UserRoleType =
   | 'citizen'
+  | 'worker'
   | 'healthcare'
   | 'municipal'
   | 'disaster';
@@ -52,6 +53,18 @@ const ROLE_OPTIONS: RoleOption[] = [
     borderActive: 'border-orange-500 bg-orange-50/40',
     bgLight: 'bg-orange-50 border-orange-200 text-orange-600',
     ringColor: 'ring-orange-500/30',
+  },
+  {
+    id: 'worker',
+    title: 'OUTDOOR WORKER',
+    badge: 'OCCUPATIONAL SAFETY',
+    description: 'Shift WBGT, cool-down pauses and field hydration',
+    subDetails: 'Exertional threshold warnings, mandatory rest alarms & electrolyte stations',
+    icon: HardHat,
+    accentColor: 'text-amber-600',
+    borderActive: 'border-amber-500 bg-amber-50/40',
+    bgLight: 'bg-amber-50 border-amber-200 text-amber-600',
+    ringColor: 'ring-amber-500/30',
   },
   {
     id: 'healthcare',
@@ -93,6 +106,7 @@ const ROLE_OPTIONS: RoleOption[] = [
 
 export const UserSelectionPage: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<UserRoleType | null>(null);
+  const [roleNotice, setRoleNotice] = useState<string | null>(null);
 
   const { setWorkspace } = useWorkspace();
   const { setActivePage } = useCitizen();
@@ -104,11 +118,53 @@ export const UserSelectionPage: React.FC = () => {
 
   const handleContinue = () => {
     if (!selectedRole) return;
+    setRoleNotice(null);
+
+    // If user has not completed role onboarding, redirect to /onboarding
+    if (user && !user.onboarding_completed) {
+      recordNavigation('#onboarding');
+      setWorkspace('onboarding');
+      return;
+    }
+
+    // Role Security Verification against authoritative profile
+    if (user) {
+      if (selectedRole === 'municipal' && user.role !== 'municipal') {
+        setRoleNotice(
+          `Access Restricted: Your current authenticated role is "${user.role.toUpperCase()}". Municipal command dashboard requires authorized civic authority credentials.`
+        );
+        return;
+      }
+      if (selectedRole === 'healthcare' && user.role !== 'healthcare') {
+        setRoleNotice(
+          `Access Restricted: Your current authenticated role is "${user.role.toUpperCase()}". Healthcare command center requires verified clinical facility credentials.`
+        );
+        return;
+      }
+      if (selectedRole === 'disaster' && user.role !== 'disaster_management') {
+        setRoleNotice(
+          `Access Restricted: Your current authenticated role is "${user.role.toUpperCase()}". Disaster Authority EOC is restricted to emergency incident command personnel.`
+        );
+        return;
+      }
+
+      if (user.approval_status !== 'approved') {
+        setRoleNotice(
+          `Access Pending: Your institutional access request is currently "${user.approval_status}". You will be granted access once authorized.`
+        );
+        return;
+      }
+    }
 
     switch (selectedRole) {
       case 'citizen':
         setActivePage('home');
         recordNavigation('#citizen/home');
+        setWorkspace('citizen');
+        break;
+      case 'worker':
+        setActivePage('thermal');
+        recordNavigation('#citizen/thermal');
         setWorkspace('citizen');
         break;
       case 'healthcare':
@@ -202,6 +258,13 @@ export const UserSelectionPage: React.FC = () => {
               Select your role to access tailored operational heat intelligence, clinical preparedness, or personal protection.
             </p>
           </div>
+
+          {roleNotice && (
+            <div className="max-w-2xl mx-auto mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold flex items-start gap-2.5 shadow-xs">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">{roleNotice}</div>
+            </div>
+          )}
 
           {/* 5 Clean Selectable Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 items-stretch">

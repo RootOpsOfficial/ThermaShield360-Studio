@@ -60,6 +60,21 @@ import {
   updateHealthcareSettings,
 } from './src/server/healthcareWorkspaceService.js';
 import { ALL_LOCATIONS } from './src/data/allLocations.js';
+import {
+  getProfile,
+  upsertProfile,
+  saveOnboarding,
+  getOnboarding,
+  submitInstitutionalRequest,
+  getInstitutionalRequests,
+  reviewInstitutionalRequest,
+  getApprovalConfigs,
+} from './src/server/authProfileService.js';
+import {
+  requireAuth,
+  requireApprover,
+  AuthenticatedRequest,
+} from './src/server/authMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2144,6 +2159,184 @@ app.post('/api/municipal/alerts', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('Error in /api/municipal/alerts:', err);
     res.status(500).json({ error: 'Failed to broadcast municipal alert' });
+  }
+});
+
+// --- AUTH & USER PROFILE API ---
+// Authenticated user only: accesses own profile, cannot modify other users, cannot elevate role
+app.get('/api/auth/profile', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const authenticatedUserId = req.user!.id;
+    const authenticatedEmail = req.user!.email;
+
+    const profile = await getProfile(authenticatedUserId, authenticatedEmail);
+    res.json(profile || null);
+  } catch (err: any) {
+    console.error('Error in GET /api/auth/profile:', err);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+app.post('/api/auth/profile', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const authenticatedUserId = req.user!.id;
+    const authenticatedEmail = req.user!.email;
+    const { full_name, role, onboarding_completed } = req.body;
+
+    const result = await upsertProfile(authenticatedUserId, authenticatedEmail, {
+      full_name,
+      role,
+      onboarding_completed,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error || 'Failed to update user profile' });
+    }
+
+    res.json(result.data);
+  } catch (err: any) {
+    console.error('Error in POST /api/auth/profile:', err);
+    res.status(500).json({ error: 'Failed to update user profile' });
+  }
+});
+
+app.get('/api/auth/onboarding', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const authenticatedUserId = req.user!.id;
+    const onboarding = await getOnboarding(authenticatedUserId);
+    res.json(onboarding || null);
+  } catch (err: any) {
+    console.error('Error in GET /api/auth/onboarding:', err);
+    res.status(500).json({ error: 'Failed to fetch onboarding data' });
+  }
+});
+
+app.post('/api/auth/onboarding', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const authenticatedUserId = req.user!.id;
+    const onboardingData = req.body;
+    if (!onboardingData || typeof onboardingData !== 'object') {
+      return res.status(400).json({ error: 'Invalid onboarding payload' });
+    }
+
+    const result = await saveOnboarding(authenticatedUserId, onboardingData);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error || 'Failed to save onboarding data' });
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('Error in POST /api/auth/onboarding:', err);
+    res.status(500).json({ error: 'Failed to save onboarding data' });
+  }
+});
+
+// --- INSTITUTIONAL APPROVAL WORKFLOW API ---
+// Publicly accessible for submission only; validates input, normalizes email, checks for duplicate pending requests
+app.post('/api/institutional/request', async (req: Request, res: Response) => {
+  try {
+    const {
+      full_name,
+      email,
+      requested_role,
+      organization,
+      department,
+      city_district,
+      contact_phone,
+      official_id_reference,
+      justification,
+    } = req.body;
+
+    if (!full_name || !email || !requested_role || !organization || !department || !city_district) {
+      return res.status(400).json({
+        error: 'Missing required institutional request fields (name, email, role, organization, department, city/district).',
+      });
+    }
+
+    if (!['municipal', 'healthcare', 'disaster_management'].includes(requested_role)) {
+      return res.status(400).json({
+        error: 'Invalid institutional role requested.',
+      });
+    }
+
+    const result = await submitInstitutionalRequest({
+      full_name: full_name.trim(),
+      email: email.trim().toLowerCase(),
+      requested_role,
+      organization: organization.trim(),
+      department: department.trim(),
+      city_district: city_district.trim(),
+      contact_phone: contact_phone ? contact_phone.trim() : undefined,
+      official_id_reference: official_id_reference ? official_id_reference.trim() : undefined,
+      justification: justification ? justification.trim() : undefined,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.status(201).json(result.data);
+  } catch (err: any) {
+    console.error('Error in POST /api/institutional/request:', err);
+    res.status(500).json({ error: 'Failed to submit institutional access request' });
+  }
+});
+
+// Protected: Only authenticated authorized approvers can view institutional requests
+app.get('/api/institutional/requests', requireAuth, requireApprover, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const role = (req.query.role as string) || undefined;
+    const status = (req.query.status as string) || undefined;
+    const email = (req.query.email as string) || undefined;
+
+    const list = await getInstitutionalRequests({ role, status, email });
+    res.json(list);
+  } catch (err: any) {
+    console.error('Error in GET /api/institutional/requests:', err);
+    res.status(500).json({ error: 'Failed to fetch institutional requests' });
+  }
+});
+
+// Protected: Only authenticated authorized approvers can review institutional requests (self-approval forbidden)
+app.post('/api/institutional/review', requireAuth, requireApprover, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { requestId, decision, notes } = req.body;
+    if (!requestId || !decision) {
+      return res.status(400).json({ error: 'requestId and decision are required' });
+    }
+
+    if (!['approved', 'rejected', 'disabled'].includes(decision)) {
+      return res.status(400).json({ error: 'Invalid decision status.' });
+    }
+
+    const approverEmail = req.user!.email;
+
+    const result = await reviewInstitutionalRequest(
+      requestId,
+      decision,
+      approverEmail,
+      notes
+    );
+
+    if (!result.success) {
+      return res.status(403).json({ error: result.error });
+    }
+
+    res.json(result.data);
+  } catch (err: any) {
+    console.error('Error in POST /api/institutional/review:', err);
+    res.status(500).json({ error: 'Failed to review institutional request' });
+  }
+});
+
+// Protected: Only authenticated approvers can view approval configurations
+app.get('/api/institutional/configs', requireAuth, requireApprover, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const configs = await getApprovalConfigs();
+    res.json(configs);
+  } catch (err: any) {
+    console.error('Error in GET /api/institutional/configs:', err);
+    res.status(500).json({ error: 'Failed to fetch approval configurations' });
   }
 });
 

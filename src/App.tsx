@@ -19,6 +19,7 @@ import { DisasterNavPage } from './types/disaster.js';
 
 // Login & User Selection Pages
 import { LoginPage } from './pages/LoginPage.js';
+import { OnboardingPage } from './pages/OnboardingPage.js';
 import { UserSelectionPage } from './pages/UserSelectionPage.js';
 import { WorkspacePortalPage } from './pages/WorkspacePortalPage.js';
 
@@ -74,12 +75,15 @@ const RouteCoordinator: React.FC = () => {
   const { activeHealthcarePage, setActiveHealthcarePage } = useHealthcare();
   const { activeDisasterPage, setActiveDisasterPage } = useDisaster();
   const { recordNavigation } = useNavigationHistory();
+  const { user, isAuthenticated } = useAuth();
 
   const workspaceRef = useRef(workspace);
   const activePageRef = useRef(activePage);
   const activeMunicipalPageRef = useRef(activeMunicipalPage);
   const activeHealthcarePageRef = useRef(activeHealthcarePage);
   const activeDisasterPageRef = useRef(activeDisasterPage);
+  const userRef = useRef(user);
+  const isAuthenticatedRef = useRef(isAuthenticated);
   const isUpdatingHashRef = useRef(false);
   const isPopstateRef = useRef(false);
 
@@ -89,13 +93,17 @@ const RouteCoordinator: React.FC = () => {
     activeMunicipalPageRef.current = activeMunicipalPage;
     activeHealthcarePageRef.current = activeHealthcarePage;
     activeDisasterPageRef.current = activeDisasterPage;
-  }, [workspace, activePage, activeMunicipalPage, activeHealthcarePage, activeDisasterPage]);
+    userRef.current = user;
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [workspace, activePage, activeMunicipalPage, activeHealthcarePage, activeDisasterPage, user, isAuthenticated]);
 
   // Sync state to URL hash
   useEffect(() => {
     let targetHash = '#login';
     if (workspace === 'login') {
       targetHash = '#login';
+    } else if (workspace === 'onboarding') {
+      targetHash = '#onboarding';
     } else if (workspace === 'portal') {
       targetHash = '#select';
     } else if (workspace === 'disaster') {
@@ -136,17 +144,55 @@ const RouteCoordinator: React.FC = () => {
         if (workspaceRef.current !== 'login') {
           setWorkspace('login');
         }
-      } else if (target.startsWith('select') || target.startsWith('portal')) {
+        return;
+      }
+
+      if (target.startsWith('onboarding')) {
+        if (workspaceRef.current !== 'onboarding') {
+          setWorkspace('onboarding');
+        }
+        return;
+      }
+
+      if (target.startsWith('select') || target.startsWith('portal')) {
         if (workspaceRef.current !== 'portal') {
           setWorkspace('portal');
         }
-      } else if (target === '') {
+        return;
+      }
+
+      if (target === '') {
         const hasSession = !!localStorage.getItem('thermashield_session');
         const defaultWs = hasSession ? 'portal' : 'login';
         if (workspaceRef.current !== defaultWs) {
           setWorkspace(defaultWs);
         }
-      } else if (target.startsWith('disaster')) {
+        return;
+      }
+
+      // Route Protection & Role Security Verification
+      const currentUser = userRef.current;
+      const isAuth = isAuthenticatedRef.current || !!localStorage.getItem('thermashield_session');
+
+      if (!isAuth) {
+        setWorkspace('login');
+        return;
+      }
+
+      if (currentUser && !currentUser.onboarding_completed) {
+        setWorkspace('onboarding');
+        return;
+      }
+
+      if (target.startsWith('disaster')) {
+        if (currentUser && currentUser.role !== 'disaster_management') {
+          // Block non-disaster users and redirect to their authorized role workspace
+          if (currentUser.role === 'municipal') setWorkspace('municipal');
+          else if (currentUser.role === 'healthcare') setWorkspace('healthcare');
+          else setWorkspace('citizen');
+          return;
+        }
+
         if (workspaceRef.current !== 'disaster') {
           setWorkspace('disaster');
         }
@@ -177,6 +223,14 @@ const RouteCoordinator: React.FC = () => {
           setActiveDisasterPage(resolved);
         }
       } else if (target.startsWith('healthcare')) {
+        if (currentUser && currentUser.role !== 'healthcare') {
+          // Block non-healthcare users and redirect to their authorized role workspace
+          if (currentUser.role === 'municipal') setWorkspace('municipal');
+          else if (currentUser.role === 'disaster_management') setWorkspace('disaster');
+          else setWorkspace('citizen');
+          return;
+        }
+
         if (workspaceRef.current !== 'healthcare') {
           setWorkspace('healthcare');
         }
@@ -211,6 +265,14 @@ const RouteCoordinator: React.FC = () => {
           setActiveHealthcarePage(resolved);
         }
       } else if (target.startsWith('municipality') || target.startsWith('municipal')) {
+        if (currentUser && currentUser.role !== 'municipal') {
+          // Block non-municipal users and redirect to their authorized role workspace
+          if (currentUser.role === 'healthcare') setWorkspace('healthcare');
+          else if (currentUser.role === 'disaster_management') setWorkspace('disaster');
+          else setWorkspace('citizen');
+          return;
+        }
+
         if (workspaceRef.current !== 'municipal') {
           setWorkspace('municipal');
         }
@@ -277,6 +339,11 @@ const MainContent: React.FC = () => {
   // 0. Login Page
   if (workspace === 'login') {
     return <LoginPage />;
+  }
+
+  // 0.5 Role Onboarding Page
+  if (workspace === 'onboarding') {
+    return <OnboardingPage />;
   }
 
   // 1. User Selection & Workspace Selector

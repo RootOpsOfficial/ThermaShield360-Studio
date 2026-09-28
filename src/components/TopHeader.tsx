@@ -4,6 +4,7 @@ import { useMunicipal } from '../context/MunicipalContext.js';
 import { useHealthcare } from '../context/HealthcareContext.js';
 import { useDisaster } from '../context/DisasterContext.js';
 import { useWorkspace } from '../context/WorkspaceContext.js';
+import { useAuth } from '../context/AuthContext.js';
 import { useNavigationHistory } from '../context/NavigationHistoryContext.js';
 import { HistoryNavControls } from './HistoryNavControls.js';
 import { HealthcareLocationSelector } from './healthcare/HealthcareLocationSelector.js';
@@ -26,10 +27,12 @@ import {
   Globe,
   Search,
   X,
+  LogOut,
 } from 'lucide-react';
 
 export const TopHeader: React.FC = () => {
   const { workspace, setWorkspace } = useWorkspace();
+  const { user, logout } = useAuth();
   const { recordNavigation } = useNavigationHistory();
   const {
     location,
@@ -537,6 +540,22 @@ export const TopHeader: React.FC = () => {
               <ArrowLeftRight className="w-3.5 h-3.5 text-orange-400" />
               <span>Switch Workspace</span>
             </button>
+
+            {/* Sign Out Button */}
+            {user && (
+              <button
+                onClick={async () => {
+                  await logout();
+                  recordNavigation('#login');
+                  setWorkspace('login');
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-black/5 transition-colors cursor-pointer"
+                title={`Sign out (${user.name})`}
+              >
+                <LogOut className="w-3.5 h-3.5 text-slate-500" />
+                <span className="hidden md:inline">Sign Out</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

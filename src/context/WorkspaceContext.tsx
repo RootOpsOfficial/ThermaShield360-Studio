@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
-export type WorkspaceType = 'login' | 'portal' | 'citizen' | 'municipal' | 'healthcare' | 'disaster';
+export type WorkspaceType = 'login' | 'portal' | 'onboarding' | 'citizen' | 'municipal' | 'healthcare' | 'disaster';
 
 interface WorkspaceContextType {
   workspace: WorkspaceType;
@@ -18,6 +18,9 @@ function getInitialWorkspace(): WorkspaceType {
     const path = window.location.pathname.toLowerCase();
     if (hash.includes('login') || path.includes('login')) {
       return 'login';
+    }
+    if (hash.includes('onboarding') || path.includes('onboarding')) {
+      return 'onboarding';
     }
     if (hash.includes('disaster') || path.includes('disaster')) {
       return 'disaster';
@@ -77,7 +80,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setWorkspaceState((prev) => {
       if (prev === ws) return prev;
       try {
-        if (ws === 'portal' || ws === 'login') {
+        if (ws === 'portal' || ws === 'login' || ws === 'onboarding') {
           localStorage.removeItem('thermashield_workspace');
         } else {
           localStorage.setItem('thermashield_workspace', ws);

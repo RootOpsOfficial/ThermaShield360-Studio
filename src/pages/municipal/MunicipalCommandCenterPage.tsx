@@ -6,6 +6,7 @@ import {
   Flame,
   AlertTriangle,
   ShieldAlert,
+  ShieldCheck,
   ListChecks,
   ArrowRight,
   Bell,
@@ -17,6 +18,8 @@ import {
   RefreshCw,
   ExternalLink,
 } from 'lucide-react';
+import { DataValidationCenter } from '../../components/data/DataValidationCenter.js';
+import { SourceDataTable } from '../../components/data/SourceDataTable.js';
 
 export const MunicipalCommandCenterPage: React.FC = () => {
   const {
@@ -30,6 +33,7 @@ export const MunicipalCommandCenterPage: React.FC = () => {
   } = useMunicipal();
 
   const [activePreviewWard, setActivePreviewWard] = useState<MunicipalWardData | null>(null);
+  const [showValidationCenter, setShowValidationCenter] = useState(false);
 
   // Loading state
   if (!summary) {
@@ -99,6 +103,15 @@ export const MunicipalCommandCenterPage: React.FC = () => {
             title="Refresh Municipal Data"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-orange-500' : ''}`} />
+          </button>
+
+          <button
+            onClick={() => setShowValidationCenter(true)}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 shadow-xs transition-all active:scale-95 cursor-pointer"
+            title="Audit Municipal Data Sources & Provenance"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Data Sources & Validation</span>
           </button>
 
           <button
@@ -533,6 +546,23 @@ export const MunicipalCommandCenterPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* ============================================================ */}
+      {/* DATA SOURCE & VALIDATION PROVENANCE TABLE                    */}
+      {/* ============================================================ */}
+      <div className="pt-2">
+        <SourceDataTable
+          lat={displayedWard?.center ? displayedWard.center[0] : 18.5204}
+          lng={displayedWard?.center ? displayedWard.center[1] : 73.8567}
+          title="Municipal Data Sources & Validation Provenance"
+          subtitle={`Traceable atmospheric, NWP, and in-situ feeds informing ${displayedWard?.name || 'Municipal Ward'} heat risk`}
+          onOpenValidationCenter={() => setShowValidationCenter(true)}
+        />
+      </div>
+
+      {showValidationCenter && (
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+      )}
     </div>
   );
 };

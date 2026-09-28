@@ -75,7 +75,7 @@ const RouteCoordinator: React.FC = () => {
   const { activeHealthcarePage, setActiveHealthcarePage } = useHealthcare();
   const { activeDisasterPage, setActiveDisasterPage } = useDisaster();
   const { recordNavigation } = useNavigationHistory();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   const workspaceRef = useRef(workspace);
   const activePageRef = useRef(activePage);
@@ -84,6 +84,7 @@ const RouteCoordinator: React.FC = () => {
   const activeDisasterPageRef = useRef(activeDisasterPage);
   const userRef = useRef(user);
   const isAuthenticatedRef = useRef(isAuthenticated);
+  const isLoadingRef = useRef(isLoading);
   const isUpdatingHashRef = useRef(false);
   const isPopstateRef = useRef(false);
 
@@ -95,7 +96,67 @@ const RouteCoordinator: React.FC = () => {
     activeDisasterPageRef.current = activeDisasterPage;
     userRef.current = user;
     isAuthenticatedRef.current = isAuthenticated;
-  }, [workspace, activePage, activeMunicipalPage, activeHealthcarePage, activeDisasterPage, user, isAuthenticated]);
+    isLoadingRef.current = isLoading;
+  }, [workspace, activePage, activeMunicipalPage, activeHealthcarePage, activeDisasterPage, user, isAuthenticated, isLoading]);
+
+  // Direct automatic routing based on verified authentication state
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!isAuthenticated) {
+      if (workspace !== 'login') {
+        setWorkspace('login');
+      }
+      return;
+    }
+
+    if (user) {
+      if (user.approval_status === 'pending') {
+        if (workspace !== 'login') {
+          setWorkspace('login');
+        }
+        return;
+      }
+
+      if (!user.onboarding_completed) {
+        if (workspace !== 'onboarding') {
+          setWorkspace('onboarding');
+        }
+        return;
+      }
+
+      // If user is authenticated and onboarding is completed, but currently on login or onboarding,
+      // route directly to their authorized dashboard!
+      if (workspace === 'login' || workspace === 'onboarding') {
+        if (user.role === 'disaster_management') {
+          setWorkspace('disaster');
+          setActiveDisasterPage('command');
+        } else if (user.role === 'municipal') {
+          setWorkspace('municipal');
+          setActiveMunicipalPage('command-center');
+        } else if (user.role === 'healthcare') {
+          setWorkspace('healthcare');
+          setActiveHealthcarePage('command-center');
+        } else if (user.role === 'worker') {
+          setWorkspace('citizen');
+          setActivePage('thermal');
+        } else {
+          setWorkspace('citizen');
+          setActivePage('home');
+        }
+      }
+    }
+  }, [
+    isLoading,
+    isAuthenticated,
+    user,
+    workspace,
+    setWorkspace,
+    setActivePage,
+    setActiveMunicipalPage,
+    setActiveHealthcarePage,
+    setActiveDisasterPage,
+  ]);
 
   // Sync state to URL hash
   useEffect(() => {
@@ -161,20 +222,25 @@ const RouteCoordinator: React.FC = () => {
         return;
       }
 
+      const currentUser = userRef.current;
+      const isAuth = isAuthenticatedRef.current;
+
       if (target === '') {
-        const hasSession = !!localStorage.getItem('thermashield_session');
-        const defaultWs = hasSession ? 'portal' : 'login';
-        if (workspaceRef.current !== defaultWs) {
-          setWorkspace(defaultWs);
+        if (!isAuth) {
+          if (workspaceRef.current !== 'login') setWorkspace('login');
+        } else if (currentUser && !currentUser.onboarding_completed) {
+          if (workspaceRef.current !== 'onboarding') setWorkspace('onboarding');
+        } else if (currentUser) {
+          if (currentUser.role === 'disaster_management') setWorkspace('disaster');
+          else if (currentUser.role === 'municipal') setWorkspace('municipal');
+          else if (currentUser.role === 'healthcare') setWorkspace('healthcare');
+          else setWorkspace('citizen');
         }
         return;
       }
 
       // Route Protection & Role Security Verification
-      const currentUser = userRef.current;
-      const isAuth = isAuthenticatedRef.current || !!localStorage.getItem('thermashield_session');
-
-      if (!isAuth) {
+      if (!isAuth && !isLoadingRef.current) {
         setWorkspace('login');
         return;
       }
@@ -335,6 +401,25 @@ const MainContent: React.FC = () => {
   const { activeMunicipalPage } = useMunicipal();
   const { activeHealthcarePage } = useHealthcare();
   const { activeDisasterPage } = useDisaster();
+  const { isLoading, user } = useAuth();
+
+  if (isLoading && !user) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-orange-500 via-amber-500 to-red-600 flex items-center justify-center text-white shadow-xl shadow-orange-500/25">
+            <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          </div>
+          <div className="text-center">
+            <h2 className="text-xl font-bold tracking-tight text-white">
+              ThermaShield<span className="text-orange-400">360</span>
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">Verifying security session...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 0. Login Page
   if (workspace === 'login') {

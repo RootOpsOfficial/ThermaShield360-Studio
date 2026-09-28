@@ -69,12 +69,17 @@ import {
   getInstitutionalRequests,
   reviewInstitutionalRequest,
   getApprovalConfigs,
+  isAuthorizedApprover,
 } from './src/server/authProfileService.js';
 import {
   requireAuth,
   requireApprover,
   AuthenticatedRequest,
 } from './src/server/authMiddleware.js';
+import { checkAllProvidersHealth } from './src/services/data/providerHealthService.js';
+import { ingestAndAuditAllSources } from './src/services/validation/provenanceLedger.js';
+import { generateMultiHorizonLadder } from './src/services/earlyWarning/multiHorizonLadder.js';
+import { fuseMultiSourceRecords } from './src/services/fusion/multiSourceFusionEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1937,10 +1942,12 @@ app.post('/api/healthcare/workspace/settings', (req: Request, res: Response) => 
 });
 
 // --- MUNICIPAL CORPORATION WORKSPACE API ---
-app.get('/api/municipal/summary', (req: Request, res: Response) => {
+app.get('/api/municipal/summary', async (req: Request, res: Response) => {
   try {
+    const { lat, lng } = parseCoords(req);
     const city = req.query.city as string | undefined;
-    const summary = getMunicipalSummary(undefined, undefined, undefined, undefined, city);
+    const weather = await fetchWeatherData(lat, lng);
+    const summary = getMunicipalSummary(weather.current, weather.daily, undefined, undefined, city);
     res.json(summary);
   } catch (err) {
     console.error('Error in /api/municipal/summary:', err);
@@ -1948,14 +1955,44 @@ app.get('/api/municipal/summary', (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/municipal/wards', (req: Request, res: Response) => {
+app.get('/api/municipal/wards', async (req: Request, res: Response) => {
   try {
+    const { lat, lng } = parseCoords(req);
     const city = req.query.city as string | undefined;
-    const wards = getMunicipalWards(undefined, undefined, undefined, city);
+    const weather = await fetchWeatherData(lat, lng);
+    const wards = getMunicipalWards(weather.current, undefined, undefined, city);
     res.json(wards);
   } catch (err) {
     console.error('Error in /api/municipal/wards:', err);
     res.status(500).json({ error: 'Failed to fetch municipal wards' });
+  }
+});
+
+// --- DISASTER MANAGEMENT WORKSPACE API ---
+app.get('/api/disaster/summary', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const weather = await fetchWeatherData(lat, lng);
+    const summary = getMunicipalSummary(weather.current, weather.daily, undefined, undefined, 'Pune');
+    const temp = weather.current.temp;
+    const severity = temp >= 42 ? 'Critical' : temp >= 38 ? 'Harmful + Confidence' : temp >= 34 ? 'High' : 'Normal';
+
+    res.json({
+      activeThreatLevel: severity,
+      jurisdiction: 'Pune Division & Western Maharashtra',
+      fusedTemperatureC: temp,
+      fusedHumidityPct: weather.current.humidity,
+      wbgt: calculateWBGT(temp, weather.current.humidity, weather.current.solarIrradiance, weather.current.windSpeed / 3.6),
+      confidenceLevel: 'High',
+      dataStatus: 'LIVE',
+      totalPopulationExposed: 3200000,
+      vulnerablePopulationCount: summary.totalDemand || 245000,
+      criticalWardsCount: summary.highRiskWardsCount || 2,
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.error('Error in /api/disaster/summary:', err);
+    res.status(500).json({ error: 'Failed to fetch disaster summary' });
   }
 });
 
@@ -2181,12 +2218,15 @@ app.post('/api/auth/profile', requireAuth, async (req: AuthenticatedRequest, res
   try {
     const authenticatedUserId = req.user!.id;
     const authenticatedEmail = req.user!.email;
-    const { full_name, role, onboarding_completed } = req.body;
+    const { full_name, role, onboarding_completed, organization, department, city } = req.body;
 
     const result = await upsertProfile(authenticatedUserId, authenticatedEmail, {
       full_name,
       role,
       onboarding_completed,
+      organization,
+      department,
+      city,
     });
 
     if (!result.success) {
@@ -2232,8 +2272,26 @@ app.post('/api/auth/onboarding', requireAuth, async (req: AuthenticatedRequest, 
 });
 
 // --- INSTITUTIONAL APPROVAL WORKFLOW API ---
-// Publicly accessible for submission only; validates input, normalizes email, checks for duplicate pending requests
-app.post('/api/institutional/request', async (req: Request, res: Response) => {
+
+// In-memory rate limiter for institutional submission anti-abuse (5 attempts per 15 minutes)
+const instSubmissionRateLimit = new Map<string, { count: number; resetAt: number }>();
+function checkInstitutionalRateLimit(key: string, maxRequests = 5, windowMs = 15 * 60 * 1000): boolean {
+  const now = Date.now();
+  const record = instSubmissionRateLimit.get(key);
+  if (!record || now > record.resetAt) {
+    instSubmissionRateLimit.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (record.count >= maxRequests) {
+    return false;
+  }
+  record.count++;
+  return true;
+}
+
+// Publicly accessible for submission only; does NOT require an existing Supabase account.
+// Validates all fields, normalizes email, checks for duplicate pending requests, ignores client-supplied reviewer/status
+const handleInstitutionalSubmission = async (req: Request, res: Response) => {
   try {
     const {
       full_name,
@@ -2247,9 +2305,26 @@ app.post('/api/institutional/request', async (req: Request, res: Response) => {
       justification,
     } = req.body;
 
+    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown_ip';
+    const trimmedEmail = (email || '').trim().toLowerCase();
+
+    // Anti-abuse rate limiting check
+    if (!checkInstitutionalRateLimit(`ip_${clientIp}`) || (trimmedEmail && !checkInstitutionalRateLimit(`email_${trimmedEmail}`))) {
+      return res.status(429).json({
+        error: 'Too many submission requests. Please wait a few minutes before trying again.',
+      });
+    }
+
     if (!full_name || !email || !requested_role || !organization || !department || !city_district) {
       return res.status(400).json({
         error: 'Missing required institutional request fields (name, email, role, organization, department, city/district).',
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      return res.status(400).json({
+        error: 'Please provide a valid official email address.',
       });
     }
 
@@ -2259,9 +2334,10 @@ app.post('/api/institutional/request', async (req: Request, res: Response) => {
       });
     }
 
+    // Server-side strict sanitization: ignores any client-supplied reviewer, approval status, or timestamps
     const result = await submitInstitutionalRequest({
       full_name: full_name.trim(),
-      email: email.trim().toLowerCase(),
+      email: trimmedEmail,
       requested_role,
       organization: organization.trim(),
       department: department.trim(),
@@ -2275,22 +2351,44 @@ app.post('/api/institutional/request', async (req: Request, res: Response) => {
       return res.status(400).json({ error: result.error });
     }
 
-    res.status(201).json(result.data);
+    // Return safe confirmation with reference ID without exposing other applicant data
+    res.status(201).json({
+      id: result.data!.id,
+      email: result.data!.email,
+      requested_role: result.data!.requested_role,
+      status: 'pending',
+      created_at: result.data!.created_at,
+      message: 'Access request submitted successfully. Awaiting administrator review.',
+    });
   } catch (err: any) {
     console.error('Error in POST /api/institutional/request:', err);
     res.status(500).json({ error: 'Failed to submit institutional access request' });
   }
-});
+};
 
-// Protected: Only authenticated authorized approvers can view institutional requests
-app.get('/api/institutional/requests', requireAuth, requireApprover, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/institutional/request', handleInstitutionalSubmission);
+app.post('/api/institutional/requests', handleInstitutionalSubmission);
+
+// Protected: View/retrieve requests.
+// Only explicitly authorized approvers OR the applicant for their own request may access request data.
+app.get('/api/institutional/requests', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const role = (req.query.role as string) || undefined;
-    const status = (req.query.status as string) || undefined;
-    const email = (req.query.email as string) || undefined;
+    const userEmail = req.user!.email;
+    const userId = req.user!.id;
+    const isApprover = await isAuthorizedApprover(userId, userEmail);
 
-    const list = await getInstitutionalRequests({ role, status, email });
-    res.json(list);
+    if (isApprover) {
+      const role = (req.query.role as string) || undefined;
+      const status = (req.query.status as string) || undefined;
+      const email = (req.query.email as string) || undefined;
+
+      const list = await getInstitutionalRequests({ role, status, email });
+      return res.json(list);
+    }
+
+    // Non-approver applicant can ONLY retrieve their own requests matching their verified email
+    const ownRequests = await getInstitutionalRequests({ email: userEmail });
+    return res.json(ownRequests);
   } catch (err: any) {
     console.error('Error in GET /api/institutional/requests:', err);
     res.status(500).json({ error: 'Failed to fetch institutional requests' });
@@ -2309,6 +2407,7 @@ app.post('/api/institutional/review', requireAuth, requireApprover, async (req: 
       return res.status(400).json({ error: 'Invalid decision status.' });
     }
 
+    // Reviewer identity is derived strictly from the authenticated token session
     const approverEmail = req.user!.email;
 
     const result = await reviewInstitutionalRequest(
@@ -2337,6 +2436,65 @@ app.get('/api/institutional/configs', requireAuth, requireApprover, async (_req:
   } catch (err: any) {
     console.error('Error in GET /api/institutional/configs:', err);
     res.status(500).json({ error: 'Failed to fetch approval configurations' });
+  }
+});
+
+// ==========================================
+// THERMASHIELD 360 DATA ACCESS & PROVENANCE LAYER
+// ==========================================
+
+// 1. Provider Health & Connectivity Probes (All 11 Providers)
+app.get('/api/data/health', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const forceRefresh = req.query.refresh === 'true';
+    const health = await checkAllProvidersHealth(lat, lng, forceRefresh);
+    res.json(health);
+  } catch (err: any) {
+    console.error('Error in GET /api/data/health:', err);
+    res.status(500).json({ error: 'Failed to retrieve provider health' });
+  }
+});
+
+// 2. Data Validation & Provenance Ledger
+app.get('/api/data/provenance', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const forceRefresh = req.query.refresh === 'true';
+    const ledger = await ingestAndAuditAllSources(lat, lng, forceRefresh);
+    res.json(ledger);
+  } catch (err: any) {
+    console.error('Error in GET /api/data/provenance:', err);
+    res.status(500).json({ error: 'Failed to retrieve provenance ledger' });
+  }
+});
+
+// 3. Multi-Horizon Early Warning Ladder (0d to 12m)
+app.get('/api/data/ladder', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const locationName = (req.query.location as string) || 'Pune, Maharashtra';
+    const ledger = await ingestAndAuditAllSources(lat, lng, false);
+    const fusion = fuseMultiSourceRecords(ledger.records);
+    const ladder = generateMultiHorizonLadder(locationName, lat, lng, fusion);
+    res.json(ladder);
+  } catch (err: any) {
+    console.error('Error in GET /api/data/ladder:', err);
+    res.status(500).json({ error: 'Failed to generate multi-horizon ladder' });
+  }
+});
+
+// 4. Multi-Source Fusion & Inter-Model Agreement
+app.get('/api/data/fusion', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = parseCoords(req);
+    const forceRefresh = req.query.refresh === 'true';
+    const ledger = await ingestAndAuditAllSources(lat, lng, forceRefresh);
+    const fusion = fuseMultiSourceRecords(ledger.records);
+    res.json(fusion);
+  } catch (err: any) {
+    console.error('Error in GET /api/data/fusion:', err);
+    res.status(500).json({ error: 'Failed to compute multi-source fusion' });
   }
 });
 

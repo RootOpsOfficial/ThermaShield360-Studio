@@ -320,7 +320,7 @@ export const DisasterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsLoading(true);
     setError(null);
     try {
-      await new Promise((res) => setTimeout(res, 600));
+      const res = await fetch(`/api/disaster/summary?lat=${selectedRegion.center.lat}&lng=${selectedRegion.center.lng}`);
       const nowStr =
         new Date().toLocaleDateString('en-IN', {
           weekday: 'short',
@@ -331,17 +331,41 @@ export const DisasterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ' • ' +
         new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
+      if (res.ok) {
+        const liveDisaster = await res.json();
+        setDataStatus('LIVE');
+        setSummary((prev) => ({
+          ...prev,
+          currentDateTime: nowStr,
+          dataStatus: 'LIVE',
+          regionalHeatStatus: {
+            ...prev.regionalHeatStatus,
+            severity: liveDisaster.activeThreatLevel || prev.regionalHeatStatus.severity,
+            currentPeakTempC: liveDisaster.fusedTemperatureC || prev.regionalHeatStatus.currentPeakTempC,
+          },
+          lastUpdated: `Live Fused Consensus (${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})`,
+        }));
+      } else {
+        setSummary((prev) => ({
+          ...prev,
+          currentDateTime: nowStr,
+          lastUpdated: `Just now via ${selectedRegion.weatherSource}`,
+        }));
+      }
+    } catch {
+      setDataStatus('MODELLED');
       setSummary((prev) => ({
         ...prev,
-        currentDateTime: nowStr,
-        lastUpdated: `Just now via ${selectedRegion.weatherSource}`,
+        lastUpdated: `Cached regional telemetry`,
       }));
-    } catch {
-      setError('Unable to refresh telemetry feeds. Showing cached state.');
     } finally {
       setIsLoading(false);
     }
-  }, [selectedRegion.weatherSource]);
+  }, [selectedRegion.center.lat, selectedRegion.center.lng, selectedRegion.weatherSource]);
+
+  useEffect(() => {
+    refreshDisasterData();
+  }, [refreshDisasterData]);
 
   const acknowledgeAlert = useCallback((alertId: string) => {
     setAlerts((prev) =>

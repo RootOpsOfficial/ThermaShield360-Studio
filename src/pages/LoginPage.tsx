@@ -6,6 +6,7 @@ import { useMunicipal } from '../context/MunicipalContext.js';
 import { useHealthcare } from '../context/HealthcareContext.js';
 import { useDisaster } from '../context/DisasterContext.js';
 import { useNavigationHistory } from '../context/NavigationHistoryContext.js';
+import { supabase } from '../lib/supabase.js';
 import {
   ShieldAlert,
   Mail,
@@ -86,6 +87,7 @@ export const LoginPage: React.FC = () => {
   // Pending Requests List (for authorized reviewer modal)
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [approvalsError, setApprovalsError] = useState<string | null>(null);
 
   // Check if current user is already authenticated and needs redirection
   useEffect(() => {
@@ -96,6 +98,8 @@ export const LoginPage: React.FC = () => {
       }
       if (!user.onboarding_completed) {
         setWorkspace('onboarding');
+      } else {
+        handleRouteToDashboard(user.role);
       }
     }
   }, [user, setWorkspace]);
@@ -150,8 +154,7 @@ export const LoginPage: React.FC = () => {
 
     const res = await login(trimmedEmail, password);
     if (res.success) {
-      recordNavigation('#select');
-      setWorkspace('portal');
+      // Automatic routing to role dashboard or onboarding is handled by useEffect and RouteCoordinator
     }
   };
 
@@ -188,8 +191,7 @@ export const LoginPage: React.FC = () => {
 
     const res = await verifyOtp(otpSentEmail || email, otpToken.trim());
     if (res.success) {
-      recordNavigation('#select');
-      setWorkspace('portal');
+      // Automatic routing to role dashboard or onboarding is handled by useEffect and RouteCoordinator
     }
   };
 
@@ -266,36 +268,68 @@ export const LoginPage: React.FC = () => {
   // Fetch pending requests for the reviewer panel
   const fetchPendingRequests = async () => {
     setIsLoadingRequests(true);
+    setApprovalsError(null);
     try {
-      const res = await fetch('/api/institutional/requests');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) {
+        setApprovalsError('Authentication required: Sign in with an authorized departmental official account to review applications.');
+        setPendingRequests([]);
+        return;
+      }
+
+      const res = await fetch('/api/institutional/requests', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
       if (res.ok) {
         const data = await res.json();
         setPendingRequests(data || []);
+      } else {
+        const errData = await res.json().catch(() => null);
+        setApprovalsError(errData?.error || 'Access denied: You do not possess institutional approval authority.');
+        setPendingRequests([]);
       }
     } catch {
-      // ignore
+      setApprovalsError('Network communication error checking authority.');
     } finally {
       setIsLoadingRequests(false);
     }
   };
 
   const handleReviewRequest = async (requestId: string, decision: 'approved' | 'rejected') => {
+    setApprovalsError(null);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) {
+        setApprovalsError('Authentication session expired. Please sign in again.');
+        return;
+      }
+
       const res = await fetch('/api/institutional/review', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           requestId,
           decision,
-          reviewer: 'Chief Security Officer',
           notes: `Decision recorded on ${new Date().toLocaleDateString()}`,
         }),
       });
+
       if (res.ok) {
         fetchPendingRequests();
+      } else {
+        const errData = await res.json().catch(() => null);
+        setApprovalsError(errData?.error || 'Failed to submit review decision.');
       }
-    } catch {
-      // ignore
+    } catch (err: any) {
+      setApprovalsError(err?.message || 'Error executing review decision.');
     }
   };
 
@@ -989,11 +1023,18 @@ export const LoginPage: React.FC = () => {
                   </div>
                   <button
                     onClick={() => setMode('signin')}
-                    className="p-1 rounded-lg hover:bg-slate-100 text-slate-500"
+                    className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
+
+                {approvalsError && (
+                  <div className="mb-3 p-3 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-semibold flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">{approvalsError}</div>
+                  </div>
+                )}
 
                 <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                   {isLoadingRequests ? (

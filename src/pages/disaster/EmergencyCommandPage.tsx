@@ -9,6 +9,7 @@ import {
   HeartPulse,
   Scale,
   ShieldAlert,
+  ShieldCheck,
   Compass,
   AlertTriangle,
   ArrowRight,
@@ -21,6 +22,8 @@ import {
   RefreshCw,
   Building,
 } from 'lucide-react';
+import { DataValidationCenter } from '../../components/data/DataValidationCenter.js';
+import { SourceDataTable } from '../../components/data/SourceDataTable.js';
 
 const RESPONSE_STAGES: RegionalResponseStage[] = [
   'MONITOR',
@@ -46,6 +49,7 @@ export const EmergencyCommandPage: React.FC = () => {
   } = useDisaster();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [showValidationCenter, setShowValidationCenter] = useState(false);
 
   const handleSelectArea = (area: DisasterAffectedArea) => {
     setSelectedArea(area);
@@ -119,6 +123,14 @@ export const EmergencyCommandPage: React.FC = () => {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-red-600' : ''}`} />
             <span className="hidden sm:inline">Sync Feeds</span>
+          </button>
+          <button
+            onClick={() => setShowValidationCenter(true)}
+            className="px-3.5 py-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 shadow-xs transition-all flex items-center gap-1.5 text-xs font-bold active:scale-95 cursor-pointer"
+            title="Audit Multi-Agency Provenance & Model Agreement Matrix"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Data Sources & Validation</span>
           </button>
           <button
             onClick={() => setActiveDisasterPage('alerts-escalation')}
@@ -757,6 +769,19 @@ export const EmergencyCommandPage: React.FC = () => {
         </div>
       </div>
 
+      {/* ============================================================ */}
+      {/* DATA SOURCE & VALIDATION PROVENANCE TABLE                    */}
+      {/* ============================================================ */}
+      <div className="pt-2">
+        <SourceDataTable
+          lat={selectedRegion?.center?.lat ?? 18.5204}
+          lng={selectedRegion?.center?.lng ?? 73.8567}
+          title="Disaster Management Early Warning Provenance"
+          subtitle="Traceable multi-model NWP & satellite feeds backing regional heat crisis response missions"
+          onOpenValidationCenter={() => setShowValidationCenter(true)}
+        />
+      </div>
+
       {/* Side Panel Drawer for Selected Area Details */}
       {isDrawerOpen && (
         <AreaDetailDrawer
@@ -764,6 +789,10 @@ export const EmergencyCommandPage: React.FC = () => {
           onClose={() => setIsDrawerOpen(false)}
           onViewOnMap={handleViewOnMap}
         />
+      )}
+
+      {showValidationCenter && (
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
       )}
     </div>
   );

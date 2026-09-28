@@ -1,5 +1,5 @@
 -- ==============================================================================
--- THERMASHIELD 360 — AUTHENTICATION, USER PROFILES & ONBOARDING MIGRATION
+-- THERMASHIELD 360 — AUTHENTICATION, USER PROFILES & ONBOARDING MIGRATION (FINAL SECURE)
 -- Platform: Supabase PostgreSQL 15+
 -- Safe & Idempotent Migration for:
 -- 1. profiles
@@ -7,8 +7,19 @@
 -- 3. institutional_access_requests
 -- 4. institutional_approval_configs
 --
--- This script does NOT modify or drop any existing tables (wards, 
--- civic_protection_assets, healthcare_facilities, municipal_alerts, etc.)
+-- SAFETY GUARANTEES:
+-- - This script does NOT modify, drop, or delete any of the 9 existing master tables:
+--   (wards, ward_demographics, civic_protection_assets, healthcare_facilities,
+--    municipal_action_queue, municipal_alerts, weather_observations,
+--    weather_forecasts, ward_risk_snapshots)
+-- - Zero DROP TABLE, TRUNCATE, or DELETE operations on data.
+-- - No fake or placeholder approver emails inserted.
+-- - Authorized approver for testing/demo explicitly configured as: rootopsofficial@gmail.com
+-- - No client role escalation allowed.
+-- - No direct client INSERT into public.profiles (handle_new_user trigger only).
+-- - No direct client INSERT into institutional_access_requests (backend service_role insertion only).
+-- - No public SELECT data leaks on access requests or approval configs.
+-- - Explicit safe search_path = public on all SECURITY DEFINER functions.
 -- ==============================================================================
 
 -- 1. Helper function for updated_at timestamps
@@ -18,7 +29,7 @@ BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- 2. TABLE: profiles (Authoritative Role & Approval Status)
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -28,6 +39,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     role TEXT NOT NULL DEFAULT 'citizen' CHECK (role IN ('citizen', 'worker', 'municipal', 'healthcare', 'disaster_management')),
     approval_status TEXT NOT NULL DEFAULT 'approved' CHECK (approval_status IN ('pending', 'approved', 'rejected', 'disabled')),
     onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    organization TEXT,
+    department TEXT,
+    city TEXT DEFAULT 'Pune',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -36,6 +50,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- Indexes for profiles
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
 CREATE INDEX IF NOT EXISTS idx_profiles_approval_status ON public.profiles(approval_status);
 
@@ -44,6 +59,28 @@ DROP TRIGGER IF EXISTS trg_profiles_updated_at ON public.profiles;
 CREATE TRIGGER trg_profiles_updated_at
 BEFORE UPDATE ON public.profiles
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Function & Trigger to prevent client role and approval_status escalation on profiles
+CREATE OR REPLACE FUNCTION public.prevent_profile_role_escalation()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- If update is initiated by a standard authenticated user session, block modifying role and approval_status
+    IF auth.uid() IS NOT NULL THEN
+        IF OLD.role IS DISTINCT FROM NEW.role THEN
+            RAISE EXCEPTION 'Unauthorized: Direct modification of profile role is forbidden.';
+        END IF;
+        IF OLD.approval_status IS DISTINCT FROM NEW.approval_status THEN
+            RAISE EXCEPTION 'Unauthorized: Direct modification of approval_status is forbidden.';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_protect_profile_role ON public.profiles;
+CREATE TRIGGER trg_protect_profile_role
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.prevent_profile_role_escalation();
 
 -- 3. TABLE: user_onboarding (Dynamic multi-role onboarding responses)
 CREATE TABLE IF NOT EXISTS public.user_onboarding (
@@ -56,6 +93,7 @@ CREATE TABLE IF NOT EXISTS public.user_onboarding (
     work_environment TEXT,
     occupation TEXT,
     outdoor_exposure TEXT,
+    peak_sun_exposure TEXT,
     age_group TEXT,
     cooling_access TEXT,
     organization TEXT,
@@ -70,6 +108,9 @@ CREATE TABLE IF NOT EXISTS public.user_onboarding (
     water_access TEXT,
     rest_area_access TEXT,
     physical_demand TEXT,
+    clinical_catchment TEXT,
+    eoc_location TEXT,
+    early_warning_lead TEXT,
     onboarding_completed BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -89,7 +130,7 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 4. TABLE: institutional_access_requests (Municipal, Healthcare, Disaster Management Approvals)
 CREATE TABLE IF NOT EXISTS public.institutional_access_requests (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id TEXT PRIMARY KEY DEFAULT ('req_' || replace(gen_random_uuid()::text, '-', '')),
     full_name TEXT NOT NULL,
     email TEXT NOT NULL,
     requested_role TEXT NOT NULL CHECK (requested_role IN ('municipal', 'healthcare', 'disaster_management')),
@@ -115,6 +156,11 @@ CREATE INDEX IF NOT EXISTS idx_inst_requests_email ON public.institutional_acces
 CREATE INDEX IF NOT EXISTS idx_inst_requests_status ON public.institutional_access_requests(status);
 CREATE INDEX IF NOT EXISTS idx_inst_requests_role ON public.institutional_access_requests(requested_role);
 
+-- Safe unique partial index: prevents multiple concurrent pending requests for the same email and role
+CREATE UNIQUE INDEX IF NOT EXISTS idx_single_pending_request
+ON public.institutional_access_requests(email, requested_role)
+WHERE status = 'pending';
+
 -- Trigger for institutional_access_requests updated_at
 DROP TRIGGER IF EXISTS trg_inst_requests_updated_at ON public.institutional_access_requests;
 CREATE TRIGGER trg_inst_requests_updated_at
@@ -136,14 +182,16 @@ CREATE TABLE IF NOT EXISTS public.institutional_approval_configs (
 ALTER TABLE public.institutional_approval_configs ENABLE ROW LEVEL SECURITY;
 
 -- Seed default institutional approval configurations
+-- Explicitly configures rootopsofficial@gmail.com as the authorized approver for all institutional tiers
 INSERT INTO public.institutional_approval_configs (role, role_label, authorized_approver_emails, allowed_email_domains, auto_approve_domains, notification_email)
 VALUES 
-('municipal', 'Municipal Corporation', ARRAY['commissioner@pmc.gov.in', 'director.disaster@pmc.gov.in'], ARRAY['gov.in', 'pmc.gov.in', 'nic.in'], FALSE, 'municipal-approvals@thermashield.org'),
-('healthcare', 'Healthcare Grid', ARRAY['cmo@sgh-hospital.org', 'director.health@maharashtra.gov.in'], ARRAY['hospital.org', 'health.gov.in', 'aiims.edu'], FALSE, 'healthcare-approvals@thermashield.org'),
-('disaster_management', 'Disaster Management Authority', ARRAY['commander@ddma-eoc.gov.in', 'operations@ndma.gov.in'], ARRAY['eoc.gov.in', 'ndma.gov.in', 'gov.in'], FALSE, 'disaster-approvals@thermashield.org')
+('municipal', 'Municipal Corporation', ARRAY['rootopsofficial@gmail.com'], ARRAY[]::TEXT[], FALSE, NULL),
+('healthcare', 'Healthcare Grid', ARRAY['rootopsofficial@gmail.com'], ARRAY[]::TEXT[], FALSE, NULL),
+('disaster_management', 'Disaster Management Authority', ARRAY['rootopsofficial@gmail.com'], ARRAY[]::TEXT[], FALSE, NULL)
 ON CONFLICT (role) DO UPDATE SET
     role_label = EXCLUDED.role_label,
-    notification_email = EXCLUDED.notification_email;
+    authorized_approver_emails = EXCLUDED.authorized_approver_emails,
+    updated_at = NOW();
 
 -- 6. ROW LEVEL SECURITY POLICIES
 
@@ -154,11 +202,9 @@ CREATE POLICY "Users can read own profile"
     TO authenticated
     USING (auth.uid() = id);
 
+-- HARDENING: Normal authenticated clients CANNOT directly insert into public.profiles.
+-- All profile creation is strictly and authoritatively handled by the handle_new_user() trigger on auth.users.
 DROP POLICY IF EXISTS "Users can insert own profile on signup" ON public.profiles;
-CREATE POLICY "Users can insert own profile on signup"
-    ON public.profiles FOR INSERT
-    TO authenticated
-    WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Users can update own basic profile" ON public.profiles;
 CREATE POLICY "Users can update own basic profile"
@@ -167,9 +213,10 @@ CREATE POLICY "Users can update own basic profile"
     USING (auth.uid() = id)
     WITH CHECK (
         auth.uid() = id
-        -- Security constraint: Users cannot elevate their own role or approval status through client RLS!
-        AND role = (SELECT p.role FROM public.profiles p WHERE p.id = auth.uid())
-        AND approval_status = (SELECT p.approval_status FROM public.profiles p WHERE p.id = auth.uid())
+        AND role IS NOT DISTINCT FROM (SELECT p.role FROM public.profiles p WHERE p.id = auth.uid())
+        AND approval_status IS NOT DISTINCT FROM (SELECT p.approval_status FROM public.profiles p WHERE p.id = auth.uid())
+        AND onboarding_completed IS NOT DISTINCT FROM (SELECT p.onboarding_completed FROM public.profiles p WHERE p.id = auth.uid())
+        AND email IS NOT DISTINCT FROM (SELECT p.email FROM public.profiles p WHERE p.id = auth.uid())
     );
 
 -- Allow service role full access to profiles
@@ -208,19 +255,17 @@ CREATE POLICY "Service role full access on user_onboarding"
     WITH CHECK (true);
 
 -- Policies for institutional_access_requests
--- Anyone (even unauthenticated) can submit an access request
+-- HARDENING: Anonymous and normal authenticated users CANNOT directly insert into this table.
+-- All insertions are executed through the backend server endpoint using the service_role key.
 DROP POLICY IF EXISTS "Anyone can submit access request" ON public.institutional_access_requests;
-CREATE POLICY "Anyone can submit access request"
-    ON public.institutional_access_requests FOR INSERT
-    TO anon, authenticated
-    WITH CHECK (true);
 
--- Users can view their own request by email or ID
+-- PRIVACY FIX: Authenticated users can ONLY read their own submitted request by verified email from auth JWT!
+-- NEVER USING (true) for SELECT on institutional requests!
 DROP POLICY IF EXISTS "Users can view own request" ON public.institutional_access_requests;
 CREATE POLICY "Users can view own request"
     ON public.institutional_access_requests FOR SELECT
-    TO anon, authenticated
-    USING (true);
+    TO authenticated
+    USING (LOWER(email) = LOWER(auth.jwt() ->> 'email'));
 
 DROP POLICY IF EXISTS "Service role full access on institutional_access_requests" ON public.institutional_access_requests;
 CREATE POLICY "Service role full access on institutional_access_requests"
@@ -230,11 +275,8 @@ CREATE POLICY "Service role full access on institutional_access_requests"
     WITH CHECK (true);
 
 -- Policies for institutional_approval_configs
+-- PRIVACY FIX: NEVER allow public anonymous or normal authenticated read of approver configs!
 DROP POLICY IF EXISTS "Public can read approval configs" ON public.institutional_approval_configs;
-CREATE POLICY "Public can read approval configs"
-    ON public.institutional_approval_configs FOR SELECT
-    TO anon, authenticated
-    USING (true);
 
 DROP POLICY IF EXISTS "Service role full access on institutional_approval_configs" ON public.institutional_approval_configs;
 CREATE POLICY "Service role full access on institutional_approval_configs"
@@ -244,28 +286,42 @@ CREATE POLICY "Service role full access on institutional_approval_configs"
     WITH CHECK (true);
 
 -- 7. AUTOMATIC USER CREATION TRIGGER FROM Supabase Auth
--- Automatically creates a profile row in public.profiles when an auth.users record is created (via email or Google OAuth)
+-- Trigger strictly enforces role assignment:
+-- Institutional roles are ONLY granted if:
+-- 1. The Supabase Auth user's email is verified (email_confirmed_at IS NOT NULL), AND
+-- 2. An exact normalized email match has an already APPROVED institutional request.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
     initial_role TEXT;
     initial_status TEXT;
     extracted_name TEXT;
+    approved_role TEXT;
 BEGIN
-    -- Determine role from user metadata if provided, otherwise default to 'citizen'
-    initial_role := COALESCE(NEW.raw_user_meta_data->>'role', 'citizen');
-    IF initial_role NOT IN ('citizen', 'worker', 'municipal', 'healthcare', 'disaster_management') THEN
-        initial_role := 'citizen';
+    -- Only check for institutional elevation if the user's email is verified in auth.users
+    IF NEW.email_confirmed_at IS NOT NULL THEN
+        SELECT requested_role INTO approved_role
+        FROM public.institutional_access_requests
+        WHERE LOWER(email) = LOWER(NEW.email) AND status = 'approved'
+        ORDER BY reviewed_at DESC
+        LIMIT 1;
     END IF;
 
-    -- Institutional roles default to 'pending' unless explicitly approved
-    IF initial_role IN ('municipal', 'healthcare', 'disaster_management') THEN
-        initial_status := 'pending';
+    IF approved_role IS NOT NULL THEN
+        -- Elevated through verified institutional approval with confirmed email
+        initial_role := approved_role;
+        initial_status := 'approved';
     ELSE
+        -- Public registration: ONLY 'citizen' or 'worker' permitted
+        IF NEW.raw_user_meta_data->>'role' = 'worker' THEN
+            initial_role := 'worker';
+        ELSE
+            initial_role := 'citizen';
+        END IF;
         initial_status := 'approved';
     END IF;
 
-    -- Extract full name from Google OAuth (name or full_name) or email
+    -- Extract full name from OAuth or metadata or email
     extracted_name := COALESCE(
         NEW.raw_user_meta_data->>'full_name',
         NEW.raw_user_meta_data->>'name',
@@ -275,7 +331,7 @@ BEGIN
     INSERT INTO public.profiles (id, email, full_name, role, approval_status, onboarding_completed)
     VALUES (
         NEW.id,
-        NEW.email,
+        LOWER(NEW.email),
         extracted_name,
         initial_role,
         initial_status,
@@ -291,10 +347,43 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Attach trigger to auth.users
+-- Attach trigger to auth.users for new user creation
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
 AFTER INSERT ON auth.users
 FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 8. AUTOMATIC PROFILE ELEVATION ON EMAIL CONFIRMATION
+-- When an unverified user confirms their email in Supabase Auth, check for an APPROVED institutional request
+CREATE OR REPLACE FUNCTION public.handle_user_email_confirmed()
+RETURNS TRIGGER AS $$
+DECLARE
+    approved_role TEXT;
+BEGIN
+    -- Only act when email_confirmed_at transitions from NULL to verified timestamp
+    IF OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL THEN
+        SELECT requested_role INTO approved_role
+        FROM public.institutional_access_requests
+        WHERE LOWER(email) = LOWER(NEW.email) AND status = 'approved'
+        ORDER BY reviewed_at DESC
+        LIMIT 1;
+
+        IF approved_role IS NOT NULL THEN
+            UPDATE public.profiles
+            SET role = approved_role,
+                approval_status = 'approved',
+                updated_at = NOW()
+            WHERE id = NEW.id;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Attach trigger to auth.users for email confirmation updates
+DROP TRIGGER IF EXISTS on_auth_user_email_confirmed ON auth.users;
+CREATE TRIGGER on_auth_user_email_confirmed
+AFTER UPDATE OF email_confirmed_at ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.handle_user_email_confirmed();

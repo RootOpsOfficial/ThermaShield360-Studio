@@ -50,6 +50,10 @@ export interface OnboardingPayload {
   water_access?: string;
   rest_area_access?: string;
   physical_demand?: string;
+  peak_sun_exposure?: string;
+  clinical_catchment?: string;
+  eoc_location?: string;
+  early_warning_lead?: string;
 }
 
 interface AuthContextType {
@@ -99,29 +103,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearError = useCallback(() => setError(null), []);
 
+  const getAuthToken = useCallback(async (): Promise<string | null> => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      return data?.session?.access_token || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Sync profile from backend or direct Supabase profiles table
   const fetchProfileForUser = useCallback(async (userId: string, email: string, meta?: any): Promise<UserProfile> => {
-    try {
-      const res = await fetch(`/api/auth/profile?userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(email)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.id) {
-          const profile: UserProfile = {
-            id: data.id,
-            email: data.email || email,
-            name: data.full_name || 'User',
-            role: data.role || 'citizen',
-            approval_status: data.approval_status || 'approved',
-            onboarding_completed: Boolean(data.onboarding_completed),
-            organization: data.organization,
-            department: data.department,
-            city: data.city,
-          };
-          return profile;
+    const token = await getAuthToken();
+
+    if (token) {
+      try {
+        const res = await fetch('/api/auth/profile', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.id) {
+            const profile: UserProfile = {
+              id: data.id,
+              email: data.email || email,
+              name: data.full_name || 'User',
+              role: data.role || 'citizen',
+              approval_status: data.approval_status || 'approved',
+              onboarding_completed: Boolean(data.onboarding_completed),
+              organization: data.organization,
+              department: data.department,
+              city: data.city,
+            };
+            return profile;
+          }
         }
+      } catch (err) {
+        console.warn('[AuthContext] Backend profile fetch warning:', err);
       }
-    } catch {
-      // fallback
     }
 
     // Try direct Supabase query
@@ -140,46 +161,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: data.role || 'citizen',
           approval_status: data.approval_status || 'approved',
           onboarding_completed: Boolean(data.onboarding_completed),
+          organization: data.organization,
+          department: data.department,
+          city: data.city,
         };
       }
     } catch {
       // ignore
     }
 
-    // Create default profile for the user
-    const defaultRole: UserRole = meta?.role || (email.includes('pmc') || email.includes('gov') ? 'municipal' : 'citizen');
-    const defaultApproval: ApprovalStatus = (defaultRole === 'citizen' || defaultRole === 'worker') ? 'approved' : 'pending';
-    const displayName = meta?.full_name || meta?.name || email.split('@')[0];
+    // Safe default profile: only 'worker' if requested during public registration, otherwise 'citizen'.
+    // Under no circumstances will email substring assign privileged institutional roles.
+    const defaultRole: UserRole = meta?.role === 'worker' ? 'worker' : 'citizen';
+    const defaultApproval: ApprovalStatus = 'approved';
+    const displayName = (meta?.full_name || meta?.name || email.split('@')[0] || 'User').trim();
 
     const newProfile: UserProfile = {
       id: userId,
-      email,
+      email: email.trim().toLowerCase(),
       name: displayName,
       role: defaultRole,
       approval_status: defaultApproval,
       onboarding_completed: false,
     };
 
-    // Post to backend to save
-    try {
-      await fetch('/api/auth/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: newProfile.id,
-          email: newProfile.email,
-          full_name: newProfile.name,
-          role: newProfile.role,
-          approval_status: newProfile.approval_status,
-          onboarding_completed: newProfile.onboarding_completed,
-        }),
-      });
-    } catch {
-      // ignore
+    // Post to backend to save if token is present
+    if (token) {
+      try {
+        const postRes = await fetch('/api/auth/profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            full_name: newProfile.name,
+            role: newProfile.role,
+            onboarding_completed: newProfile.onboarding_completed,
+          }),
+        });
+        if (postRes.ok) {
+          const savedData = await postRes.json();
+          if (savedData && savedData.id) {
+            return {
+              id: savedData.id,
+              email: savedData.email || newProfile.email,
+              name: savedData.full_name || newProfile.name,
+              role: savedData.role || newProfile.role,
+              approval_status: savedData.approval_status || newProfile.approval_status,
+              onboarding_completed: Boolean(savedData.onboarding_completed),
+              organization: savedData.organization,
+              department: savedData.department,
+              city: savedData.city,
+            };
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
 
     return newProfile;
-  }, []);
+  }, [getAuthToken]);
 
   const saveLocalUser = useCallback((profile: UserProfile | null) => {
     setUser(profile);
@@ -216,9 +259,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (mounted) {
             saveLocalUser(profile);
           }
+        } else if (mounted) {
+          // If no active Supabase session exists, clear any stale cached session
+          saveLocalUser(null);
         }
       } catch (err: any) {
         console.warn('[AuthContext] init error:', err);
+        if (mounted) {
+          saveLocalUser(null);
+        }
       } finally {
         if (mounted) {
           setIsLoading(false);
@@ -231,7 +280,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session?.user) {
         setIsLoading(true);
         const profile = await fetchProfileForUser(
           session.user.id,
@@ -525,25 +574,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
       setIsLoading(true);
 
-      try {
-        const res = await fetch('/api/auth/onboarding', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...payload,
-            user_id: user.id,
-            city: payload.city || user.city || 'Pune',
-            organization: payload.organization || user.organization,
-            department: payload.department || user.department,
-          }),
-        });
+      const token = await getAuthToken();
 
-        if (!res.ok) {
-          const data = await res.json();
-          const msg = data?.error || 'Failed to save onboarding responses.';
-          setError(msg);
-          setIsLoading(false);
-          return { success: false, error: msg };
+      try {
+        let savedSuccessfully = false;
+
+        if (token) {
+          const res = await fetch('/api/auth/onboarding', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              ...payload,
+              city: payload.city || user.city || 'Pune',
+              organization: payload.organization || user.organization,
+              department: payload.department || user.department,
+            }),
+          });
+
+          if (res.ok) {
+            savedSuccessfully = true;
+          } else {
+            const data = await res.json().catch(() => null);
+            console.warn('[AuthContext] Backend onboarding error:', data?.error);
+          }
+        }
+
+        // Direct Supabase fallback if backend fails or table not synced
+        if (!savedSuccessfully) {
+          try {
+            const now = new Date().toISOString();
+            const { error: sbErr } = await supabase
+              .from('user_onboarding')
+              .upsert(
+                {
+                  user_id: user.id,
+                  ...payload,
+                  city: payload.city || user.city || 'Pune',
+                  organization: payload.organization || user.organization,
+                  department: payload.department || user.department,
+                  onboarding_completed: true,
+                  updated_at: now,
+                },
+                { onConflict: 'user_id' }
+              );
+
+            if (!sbErr) {
+              await supabase
+                .from('profiles')
+                .update({ onboarding_completed: true, updated_at: now })
+                .eq('id', user.id);
+              savedSuccessfully = true;
+            }
+          } catch (sbEx) {
+            console.warn('[AuthContext] Direct onboarding fallback error:', sbEx);
+          }
         }
 
         // Update local user state
@@ -565,7 +652,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: msg };
       }
     },
-    [user, saveLocalUser]
+    [user, getAuthToken, saveLocalUser]
   );
 
   // Instant Demo Switcher for fast verification of all 5 roles

@@ -12,6 +12,7 @@ import { DisasterActiveLocationSelector } from './disaster/DisasterActiveLocatio
 import { ALL_LOCATIONS, LocationItem } from '../data/allLocations.js';
 import {
   ShieldAlert,
+  ShieldCheck,
   MapPin,
   RefreshCw,
   Bell,
@@ -29,6 +30,7 @@ import {
   X,
   LogOut,
 } from 'lucide-react';
+import { DataValidationCenter } from './data/DataValidationCenter.js';
 
 export const TopHeader: React.FC = () => {
   const { workspace, setWorkspace } = useWorkspace();
@@ -78,6 +80,7 @@ export const TopHeader: React.FC = () => {
 
   const [isMunicipalDropdownOpen, setIsMunicipalDropdownOpen] = useState(false);
   const [selectedMunicipalCorp, setSelectedMunicipalCorp] = useState('Pune Municipal Corp (PMC)');
+  const [showValidationCenter, setShowValidationCenter] = useState(false);
   const municipalRef = useRef<HTMLDivElement>(null);
 
   // Close location dropdown on outside click
@@ -528,6 +531,17 @@ export const TopHeader: React.FC = () => {
               </span>
             </div>
 
+            {/* Data Sources & Validation Center Button */}
+            <button
+              onClick={() => setShowValidationCenter(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-black/5 transition-all shadow-xs cursor-pointer"
+              title="Inspect Data Sources, Verification Status & Provenance Ledger"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span className="hidden md:inline">Data Sources</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            </button>
+
             {/* Clear Switch Workspace Button (Navigates to 1st Page Workspace Selection) */}
             <button
               onClick={() => {
@@ -559,6 +573,10 @@ export const TopHeader: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showValidationCenter && (
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+      )}
     </header>
   );
 };

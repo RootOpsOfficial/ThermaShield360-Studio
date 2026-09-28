@@ -1,5 +1,7 @@
 import { WeatherCurrent, WeatherHourly, WeatherDailyForecast, DataSourceLabel } from './types.js';
 import { calculateWBGT, calculateUTCI, calculateHeatIndex, categorizeThermalStress } from './thermalEngine.js';
+import { ingestAndAuditAllSources } from '../services/validation/provenanceLedger.js';
+import { fuseMultiSourceRecords } from '../services/fusion/multiSourceFusionEngine.js';
 
 interface CachedWeatherData {
   timestamp: number;
@@ -215,12 +217,23 @@ export async function fetchWeatherData(
     const h = data.hourly;
     const d = data.daily;
 
-    const currentTemp = c.temperature_2m;
-    const rh = c.relative_humidity_2m;
-    const windKmH = c.wind_speed_10m;
-    const windMs = windKmH / 3.6;
-    const solar = c.direct_normal_irradiance || 0;
-    const feelsLike = c.apparent_temperature || calculateHeatIndex(currentTemp, rh);
+    // Ingest and fuse live operational models (ECMWF, GFS, etc.)
+    let fusedConsensus: any = null;
+    try {
+      const ledger = await ingestAndAuditAllSources(lat, lng, false);
+      fusedConsensus = fuseMultiSourceRecords(ledger.records);
+    } catch (e) {
+      console.warn('Fusion pipeline warning in weatherService:', e);
+    }
+
+    const currentTemp = fusedConsensus?.fusedTemperatureC ?? c.temperature_2m;
+    const rh = fusedConsensus?.fusedHumidityPct ?? c.relative_humidity_2m;
+    const windKmH = fusedConsensus?.fusedWindSpeedMs != null
+      ? Math.round(fusedConsensus.fusedWindSpeedMs * 3.6 * 10) / 10
+      : c.wind_speed_10m;
+    const solar = fusedConsensus?.fusedSolarRadiationWm2 ?? c.direct_normal_irradiance ?? 0;
+    const pressure = fusedConsensus?.fusedPressureHpa ?? c.surface_pressure ?? 1013;
+    const feelsLike = calculateHeatIndex(currentTemp, rh);
 
     const current: WeatherCurrent = {
       temp: Math.round(currentTemp * 10) / 10,
@@ -230,7 +243,7 @@ export async function fetchWeatherData(
       windDirection: c.wind_direction_10m || 0,
       solarIrradiance: Math.round(solar),
       uvIndex: h.uv_index ? h.uv_index[new Date().getHours()] || 7 : 7,
-      pressure: Math.round(c.surface_pressure || 1013),
+      pressure: Math.round(pressure),
       weatherCode: c.weather_code || 0,
       weatherDescription: decodeWeatherCode(c.weather_code || 0),
       source: 'LIVE',

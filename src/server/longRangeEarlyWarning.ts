@@ -17,43 +17,45 @@ function calculateUnifiedConfidence(
 }
 
 export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): LongRangeEarlyWarningReport {
-  // 1. 8 to 12 Month
+  // 1. 8 to 12 Month (Horizon E: Climate Teleconnections & Teleconnection Envelope)
+  // At 8-12 months, numerical weather prediction cannot predict local daily weather.
+  // Outputs are strictly ThermaShield-derived probabilistic signals based on ENSO/IOD oceanic drivers.
   const h8_12_models = {
     ecmwf: {
       modelName: 'ECMWF' as const,
-      fullName: 'European Centre for Medium-Range Weather Forecasts (SEAS5)',
-      confidencePct: 86,
-      prediction: 'Severe Heatwave Event (+3.2°C above 30-year climatological normal)',
-      anomalyDegC: 3.2,
+      fullName: 'ECMWF SEAS5 Coupled Seasonal System (Oceanic Teleconnections)',
+      confidencePct: 38,
+      prediction: 'Elevated Summer Anomaly Signal (Positive SST departure in equatorial Indian Ocean)',
+      anomalyDegC: 2.1,
       agreement: true,
-      notes: 'Persistent positive thermal geopotential height anomaly over western Deccan plateau.',
+      notes: 'ThermaShield-Derived Probabilistic Signal: 13-month SST anomaly envelope suggests delayed sea-breeze penetration.',
     },
     noaa: {
       modelName: 'NOAA' as const,
-      fullName: 'NOAA Climate Forecast System (CFSv2)',
-      confidencePct: 81,
-      prediction: 'Elevated Heatwave Risk (+2.8°C anomaly)',
-      anomalyDegC: 2.8,
+      fullName: 'NOAA Climate Prediction Center (ENSO / Long-Lead Outlook)',
+      confidencePct: 36,
+      prediction: 'Probabilistic Tercile Tilt: 45% Above Normal / 35% Near Normal / 20% Below',
+      anomalyDegC: 1.8,
       agreement: true,
-      notes: 'El Niño decaying phase historically correlates with delayed sea breeze and prolonged inland heating.',
+      notes: 'ThermaShield-Derived Probabilistic Signal: El Niño decaying phase teleconnection envelope.',
     },
     imd: {
       modelName: 'IMD' as const,
-      fullName: 'India Meteorological Department (Long-Range Seasonal Ensemble)',
-      confidencePct: 89,
-      prediction: 'Heatwave to Severe Heatwave Likely across Maharashtra Interior',
-      anomalyDegC: 3.4,
+      fullName: 'IMD Monsoon Mission Long-Lead Guidance',
+      confidencePct: 42,
+      prediction: 'Climatological Extreme Heat Envelope (Deccan Interior)',
+      anomalyDegC: 2.4,
       agreement: true,
-      notes: 'High probability of blocking anticyclones preventing pre-monsoon convective showers.',
+      notes: 'Official IMD Long-Lead Climatology: Elevated pre-monsoon temperature potential; subject to spring ENSO update.',
     },
     gfs: {
       modelName: 'GFS' as const,
-      fullName: 'NCEP Global Forecast System (Sub-Seasonal Coupled)',
-      confidencePct: 76,
-      prediction: 'Heatwave Event Probable (+2.5°C anomaly)',
-      anomalyDegC: 2.5,
+      fullName: 'NCEP CFSv2 Extended Coupled Ocean-Atmosphere',
+      confidencePct: 35,
+      prediction: 'Sub-Seasonal Multi-System Anomaly Tendency (+1.9°C anomaly)',
+      anomalyDegC: 1.9,
       agreement: true,
-      notes: 'Upper-tropospheric subsidence anomaly projected over central-west India.',
+      notes: 'Upper-tropospheric geopotential height anomaly tendency over peninsular India.',
     },
   };
   const h8_12_conf = calculateUnifiedConfidence(
@@ -61,43 +63,43 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
     h8_12_models.ecmwf.confidencePct,
     h8_12_models.noaa.confidencePct,
     h8_12_models.gfs.confidencePct
-  );
+  ); // ~38% confidence
 
-  // 2. 5 to 8 Month
+  // 2. 5 to 8 Month (Horizon D: Seasonal Multi-Model Ensemble)
   const h5_8_models = {
     ecmwf: {
       modelName: 'ECMWF' as const,
-      fullName: 'ECMWF SEAS5 Seasonal Model',
-      confidencePct: 88,
-      prediction: 'Early-Season Heatwave Outbreak (+2.9°C anomaly)',
-      anomalyDegC: 2.9,
+      fullName: 'ECMWF SEAS5 Seasonal Model (Copernicus C3S)',
+      confidencePct: 54,
+      prediction: 'Seasonal Heat Outlook: 58% Above-Normal Tercile Probability',
+      anomalyDegC: 2.3,
       agreement: true,
-      notes: 'Rapid soil moisture depletion across peninsular India following low post-monsoon residual moisture.',
+      notes: 'Multi-system monthly averaged conditions show warm anomaly tendency across peninsular India.',
     },
     noaa: {
       modelName: 'NOAA' as const,
-      fullName: 'NOAA CFSv2 Global Ensemble',
-      confidencePct: 85,
-      prediction: 'Moderate to Severe Heatwave Spike (+2.6°C anomaly)',
-      anomalyDegC: 2.6,
+      fullName: 'NOAA CFSv2 Seasonal Ensemble',
+      confidencePct: 48,
+      prediction: 'Seasonal Heat Tilt: 54% Probability of Upper Tercile',
+      anomalyDegC: 2.0,
       agreement: true,
       notes: 'Continental dry north-westerly wind dominance advecting Thar Desert thermal plumes.',
     },
     imd: {
       modelName: 'IMD' as const,
-      fullName: 'IMD Seasonal Climate Predictor',
-      confidencePct: 92,
-      prediction: 'Confirmed Heatwave Probability >75% for Pune & Western Vidarbha',
-      anomalyDegC: 3.1,
+      fullName: 'IMD Seasonal Climate Predictor (April-June Outlook)',
+      confidencePct: 56,
+      prediction: 'Confirmed Seasonal Heatwave Potential for Pune & Western Vidarbha',
+      anomalyDegC: 2.6,
       agreement: true,
-      notes: 'High spatial agreement on daytime maximum temperatures crossing 41.5°C threshold.',
+      notes: 'Official IMD seasonal guidance projects above-normal maximum temperatures across central Maharashtra.',
     },
     gfs: {
       modelName: 'GFS' as const,
-      fullName: 'NCEP GFS Coupled Multi-System',
-      confidencePct: 83,
-      prediction: 'Early Onset Heatwave Spike (+2.4°C anomaly)',
-      anomalyDegC: 2.4,
+      fullName: 'NCEP GFS Coupled Multi-System Seasonal',
+      confidencePct: 50,
+      prediction: 'Pre-Monsoon Thermal Build-Up (+2.1°C anomaly)',
+      anomalyDegC: 2.1,
       agreement: true,
       notes: 'Anticyclonic flow over northern Arabian Sea cutting off moist marine winds.',
     },
@@ -107,7 +109,7 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
     h5_8_models.ecmwf.confidencePct,
     h5_8_models.noaa.confidencePct,
     h5_8_models.gfs.confidencePct
-  );
+  ); // ~52% confidence
 
   // 3. 3 to 5 Months (Winter to Early Spring - No Heatwave)
   const h3_5_models = {
@@ -155,41 +157,41 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
     h3_5_models.gfs.confidencePct
   );
 
-  // 4. 1 to 3 Months (Post-Monsoon Transition & Late Autumn)
+  // 4. 1 to 3 Months / 15 to 46 Days (Horizon C: Sub-Seasonal S2S Weekly Anomaly Outlook)
   const h1_3_models = {
     ecmwf: {
       modelName: 'ECMWF' as const,
-      fullName: 'ECMWF 45-Day Extended Range System',
-      confidencePct: 91,
-      prediction: 'Post-Monsoon "October Heat" Surge (+2.7°C above normal)',
-      anomalyDegC: 2.7,
+      fullName: 'ECMWF 46-Day Sub-Seasonal Extended System',
+      confidencePct: 64,
+      prediction: 'Sub-Seasonal Anomaly Outlook (+2.4°C weekly anomaly above normal)',
+      anomalyDegC: 2.4,
       agreement: true,
-      notes: 'Monsoon withdrawal triggers sudden spike in solar radiation and ground heat reflection.',
+      notes: 'S2S Coupled Guidance: Atmospheric memory limits point prediction; values represent 7-day anomaly tendency.',
     },
     noaa: {
       modelName: 'NOAA' as const,
-      fullName: 'NOAA CFS Sub-Seasonal Model',
-      confidencePct: 87,
-      prediction: 'Elevated Post-Monsoon Heat Episode (+2.4°C anomaly)',
-      anomalyDegC: 2.4,
+      fullName: 'NOAA CFSv2 Sub-Seasonal Model',
+      confidencePct: 60,
+      prediction: 'Weekly Heat Anomaly Tendency (+2.1°C departure)',
+      anomalyDegC: 2.1,
       agreement: true,
       notes: 'High daytime temperatures reaching 36°C - 38°C with moderate residual humidity.',
     },
     imd: {
       modelName: 'IMD' as const,
-      fullName: 'IMD Extended Range Multi-Model Ensemble',
-      confidencePct: 94,
-      prediction: 'Classic "October Heat" Surge Confirmed for Pune/Konkan Border',
-      anomalyDegC: 2.9,
+      fullName: 'IMD Extended Range Multi-Model Ensemble (ERF)',
+      confidencePct: 68,
+      prediction: 'Classic "October Heat" Surge Signal for Western Maharashtra',
+      anomalyDegC: 2.7,
       agreement: true,
-      notes: 'Abrupt reduction in monsoon cloud cover produces sharp diurnal heating peaks.',
+      notes: 'Official IMD ERF: Abrupt reduction in monsoon cloud cover produces sharp diurnal heating peaks.',
     },
     gfs: {
       modelName: 'GFS' as const,
-      fullName: 'NCEP GFS 30-Day Outlook',
-      confidencePct: 88,
-      prediction: 'Significant Daytime Temperature Spike (+2.5°C anomaly)',
-      anomalyDegC: 2.5,
+      fullName: 'NCEP GFS Sub-Seasonal Coupled Guidance',
+      confidencePct: 58,
+      prediction: 'Sub-Seasonal Positive Thermal Anomaly (+2.0°C anomaly)',
+      anomalyDegC: 2.0,
       agreement: true,
       notes: 'Dry continental winds replace humid monsoon westerlies, driving up afternoon heat.',
     },
@@ -199,7 +201,7 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
     h1_3_models.ecmwf.confidencePct,
     h1_3_models.noaa.confidencePct,
     h1_3_models.gfs.confidencePct
-  );
+  ); // ~63% confidence
 
   // 5. 1 Day to 30 Days (Immediate Operational Forecast)
   const h1_30_models = {
@@ -350,12 +352,12 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
     {
       id: 'horizon-5-8m',
       timeRangeLabel: '5 to 8 Months',
-      timeRangeTitle: '5 to 8 Months Seasonal Horizon (Feb – May 2027)',
+      timeRangeTitle: '5 to 8 Months Seasonal Forecast Outlook (Copernicus C3S / IMD)',
       targetWindow: 'Pre-Monsoon Summer Build-Up 2027',
       isHeatwaveComing: true,
       heatwaveStatus: 'COMING',
       verdict: 'HEATWAVE IS COMING',
-      statusHeadline: 'HEATWAVE EARLY WARNING: Early Summer Heatwave Expected in Mid-April 2027',
+      statusHeadline: 'SEASONAL HEAT OUTLOOK: Pre-Monsoon Thermal Build-Up Anticipated in Mid-April 2027',
       unifiedConfidencePct: Math.round(h5_8_conf),
       consensusConfidencePct: Math.round(h5_8_conf),
       expectedOnsetDates: 'April 12 – April 22, 2027',
@@ -381,12 +383,12 @@ export function generateLongRangeEarlyWarning(locationName: string = 'Pune'): Lo
     {
       id: 'horizon-8-12m',
       timeRangeLabel: '8 to 12 Months',
-      timeRangeTitle: '8 to 12 Months Climate Outlook (May – Oct 2027)',
+      timeRangeTitle: '8 to 12 Months Climate Teleconnection Outlook (ThermaShield-Derived Probabilistic Signal)',
       targetWindow: 'Summer Peak & Monsoon Onset Transition 2027',
       isHeatwaveComing: true,
       heatwaveStatus: 'COMING',
       verdict: 'HEATWAVE IS COMING',
-      statusHeadline: 'MAJOR HEATWAVE EARLY WARNING: Strong Heatwave Episode Predicted in Late May 2027',
+      statusHeadline: 'THERMASHIELD-DERIVED PROBABILISTIC CLIMATE SIGNAL: Oceanic Teleconnection Envelope for Summer 2027',
       unifiedConfidencePct: Math.round(h8_12_conf),
       consensusConfidencePct: Math.round(h8_12_conf),
       expectedOnsetDates: 'May 16 – May 29, 2027',

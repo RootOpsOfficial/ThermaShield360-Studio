@@ -120,6 +120,13 @@ export const UserSelectionPage: React.FC = () => {
     if (!selectedRole) return;
     setRoleNotice(null);
 
+    if (!user) {
+      setRoleNotice('Authentication required. Please sign in to launch your workspace.');
+      recordNavigation('#login');
+      setWorkspace('login');
+      return;
+    }
+
     // If user has not completed role onboarding, redirect to /onboarding
     if (user && !user.onboarding_completed) {
       recordNavigation('#onboarding');

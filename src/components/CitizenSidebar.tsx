@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useCitizen } from '../context/CitizenContext.js';
 import { CitizenPage } from '../types.js';
 import {
@@ -12,7 +12,9 @@ import {
   Bell,
   Settings,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
+import { DataValidationCenter } from './data/DataValidationCenter.js';
 
 interface SidebarItem {
   id: CitizenPage;
@@ -23,6 +25,7 @@ interface SidebarItem {
 
 export const CitizenSidebar: React.FC = () => {
   const { activePage, setActivePage } = useCitizen();
+  const [showValidationCenter, setShowValidationCenter] = useState(false);
 
   const items: SidebarItem[] = [
     { id: 'home', label: 'Home', icon: Home },
@@ -76,8 +79,25 @@ export const CitizenSidebar: React.FC = () => {
           })}
         </nav>
 
+        {/* Data Verification Status Card */}
+        <button
+          onClick={() => setShowValidationCenter(true)}
+          className="mt-3 p-3 rounded-2xl bg-white border border-black/5 hover:border-black/10 text-left text-xs transition-all shadow-2xs group cursor-pointer"
+        >
+          <div className="flex items-center justify-between text-slate-800 font-bold mb-1">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span className="text-[11px]">11 Sources Verified</span>
+            </div>
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-[10px] text-slate-500 leading-snug">
+            ECMWF, NOAA, Open-Meteo, IMD, ERA5 & NASA active.
+          </p>
+        </button>
+
         {/* Bottom Safety Tip Mini Card */}
-        <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-orange-100 text-xs">
+        <div className="mt-2.5 p-3.5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-orange-100 text-xs">
           <div className="flex items-center gap-1.5 text-orange-800 font-bold mb-1">
             <Sparkles className="w-3.5 h-3.5 text-orange-600" />
             <span>Civic Protection Active</span>
@@ -114,6 +134,10 @@ export const CitizenSidebar: React.FC = () => {
           );
         })}
       </div>
+
+      {showValidationCenter && (
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+      )}
     </>
   );
 };

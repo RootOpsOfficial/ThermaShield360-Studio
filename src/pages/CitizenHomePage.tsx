@@ -37,7 +37,10 @@ import {
   Search,
   Globe2,
   LocateFixed,
+  Database,
 } from 'lucide-react';
+import { DataValidationCenter } from '../components/data/DataValidationCenter.js';
+import { SourceDataTable } from '../components/data/SourceDataTable.js';
 
 export const CitizenHomePage: React.FC = () => {
   const {
@@ -61,6 +64,8 @@ export const CitizenHomePage: React.FC = () => {
   const [geocodeSearchResults, setGeocodeSearchResults] = useState<any[]>([]);
   const [isSearchingGeocode, setIsSearchingGeocode] = useState(false);
   const [expandedHeatwavePeriod, setExpandedHeatwavePeriod] = useState<string | null>('1-30-days');
+  const [showProvenanceModal, setShowProvenanceModal] = useState(false);
+  const [showInlineProvenance, setShowInlineProvenance] = useState(true);
 
   // Debounced live Google Geocoding search
   useEffect(() => {
@@ -525,7 +530,23 @@ export const CitizenHomePage: React.FC = () => {
             </div>
 
             {/* Shows whether it is High, Low, Moderate for health */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowProvenanceModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/90 hover:bg-white text-slate-800 border border-slate-200 shadow-xs transition-all active:scale-95 cursor-pointer"
+                title="Audit underlying meteorological input sources (Open-Meteo, ECMWF, NOAA, ERA5, NASA, IMD)"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Data Sources & Validation</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowInlineProvenance((prev) => !prev)}
+                className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 underline underline-offset-2 ml-1 cursor-pointer"
+              >
+                {showInlineProvenance ? 'Hide Audit' : 'Show Provenance'}
+              </button>
               <span
                 className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${block1Style.badgeClass}`}
               >
@@ -671,6 +692,17 @@ export const CitizenHomePage: React.FC = () => {
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Inline Provenance Table when expanded */}
+          {showInlineProvenance && (
+            <div className="pt-2 animate-in fade-in duration-200">
+              <SourceDataTable
+                lat={location.lat}
+                lng={location.lng}
+                onOpenValidationCenter={() => setShowProvenanceModal(true)}
+              />
+            </div>
+          )}
         </div>
       </section>
 
@@ -1077,6 +1109,10 @@ export const CitizenHomePage: React.FC = () => {
           </button>
         </div>
       </section>
+
+      {showProvenanceModal && (
+        <DataValidationCenter isModal onClose={() => setShowProvenanceModal(false)} />
+      )}
     </div>
   );
 };

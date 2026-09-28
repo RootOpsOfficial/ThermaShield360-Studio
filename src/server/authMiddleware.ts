@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabase } from './supabase.js';
-import { isAuthorizedApprover } from './authProfileService.js';
+import { isAuthorizedApprover, hasAnyConfiguredApprovers } from './authProfileService.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -65,6 +65,14 @@ export async function requireApprover(req: AuthenticatedRequest, res: Response, 
   }
 
   try {
+    const anyConfigured = await hasAnyConfiguredApprovers();
+    if (!anyConfigured) {
+      return res.status(403).json({
+        error: 'No institutional approver is configured yet.',
+        detail: 'Institutional approval is awaiting configuration of authorized official approver emails in institutional_approval_configs.',
+      });
+    }
+
     const hasAuthority = await isAuthorizedApprover(req.user.id, req.user.email);
     if (!hasAuthority) {
       return res.status(403).json({

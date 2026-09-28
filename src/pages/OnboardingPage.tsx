@@ -137,6 +137,7 @@ export const OnboardingPage: React.FC = () => {
     } else if (role === 'worker') {
       payload.occupation = occupation;
       payload.work_hours = workHours;
+      payload.peak_sun_exposure = peakSunExposure;
       payload.outdoor_exposure = peakSunExposure;
       payload.water_access = waterAccess;
       payload.rest_area_access = restAreaAccess;
@@ -150,12 +151,14 @@ export const OnboardingPage: React.FC = () => {
       payload.facility_type = facilityType;
       payload.facility_capacity = facilityCapacity;
       payload.operational_area = clinicalCatchment;
+      payload.clinical_catchment = clinicalCatchment;
       payload.monitoring_preferences = clinicalPriorities;
     } else if (role === 'disaster_management') {
       payload.department = authorityLevel;
       payload.operational_area = eocLocation;
+      payload.eoc_location = eocLocation;
       payload.responsibilities = interagencyPurview;
-      payload.work_hours = earlyWarningLead;
+      payload.early_warning_lead = earlyWarningLead;
     }
 
     const res = await completeOnboarding(payload);

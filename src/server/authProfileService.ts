@@ -7,6 +7,9 @@ export interface ProfileRecord {
   role: 'citizen' | 'worker' | 'municipal' | 'healthcare' | 'disaster_management';
   approval_status: 'pending' | 'approved' | 'rejected' | 'disabled';
   onboarding_completed: boolean;
+  organization?: string;
+  department?: string;
+  city?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -35,6 +38,10 @@ export interface OnboardingRecord {
   water_access?: string;
   rest_area_access?: string;
   physical_demand?: string;
+  peak_sun_exposure?: string;
+  clinical_catchment?: string;
+  eoc_location?: string;
+  early_warning_lead?: string;
   onboarding_completed?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -123,20 +130,31 @@ export async function getProfile(userId: string, email?: string): Promise<Profil
       if (userEmail && (profile.role === 'citizen' || profile.role === 'worker' || profile.approval_status === 'pending')) {
         const approvedReq = await getApprovedInstitutionalRequestForEmail(userEmail);
         if (approvedReq) {
-          // Promote profile in database to approved institutional role
-          const { data: updatedData } = await supabase
-            .from('profiles')
-            .update({
-              role: approvedReq.requested_role,
-              approval_status: 'approved',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', userId)
-            .select()
-            .maybeSingle();
+          // Check that the user's Supabase Auth email is verified
+          let isVerified = false;
+          try {
+            const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+            isVerified = Boolean(authUser?.user?.email_confirmed_at);
+          } catch {
+            // ignore admin check failure
+          }
 
-          if (updatedData) {
-            return updatedData as ProfileRecord;
+          if (isVerified) {
+            // Promote profile in database to approved institutional role
+            const { data: updatedData } = await supabase
+              .from('profiles')
+              .update({
+                role: approvedReq.requested_role,
+                approval_status: 'approved',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', userId)
+              .select()
+              .maybeSingle();
+
+            if (updatedData) {
+              return updatedData as ProfileRecord;
+            }
           }
         }
       }
@@ -163,6 +181,9 @@ export async function upsertProfile(
     full_name?: string;
     role?: 'citizen' | 'worker' | 'municipal' | 'healthcare' | 'disaster_management';
     onboarding_completed?: boolean;
+    organization?: string;
+    department?: string;
+    city?: string;
   }
 ): Promise<{ success: boolean; data?: ProfileRecord; error?: string }> {
   try {
@@ -202,6 +223,9 @@ export async function upsertProfile(
       onboarding_completed: profileData.onboarding_completed !== undefined
         ? profileData.onboarding_completed
         : (existing?.onboarding_completed ?? false),
+      organization: profileData.organization || existing?.organization || (approvedReq ? approvedReq.organization : undefined),
+      department: profileData.department || existing?.department || (approvedReq ? approvedReq.department : undefined),
+      city: profileData.city || existing?.city || (approvedReq ? approvedReq.city_district : 'Pune'),
       created_at: existing?.created_at || now,
       updated_at: now,
     };
@@ -357,37 +381,27 @@ export async function submitInstitutionalRequest(
 /**
  * Check if an authenticated user is an authorized approver.
  * Rules:
- * 1. Must be authenticated with an approved profile in profiles table.
- * 2. User's email must be listed in institutional_approval_configs.authorized_approver_emails
- *    OR user has an approved profile with role IN ('municipal', 'healthcare', 'disaster_management').
+ * 1. Must have a valid verified email.
+ * 2. User's email must be explicitly listed in institutional_approval_configs.authorized_approver_emails.
+ * Blanket role checks are not used to prevent unauthorized elevation.
  */
 export async function isAuthorizedApprover(userId: string, email: string): Promise<boolean> {
   const normalized = email.trim().toLowerCase();
+  if (!normalized) return false;
 
   try {
-    // 1. Check if user's email is explicitly listed in approval configs
-    const { data: configs } = await supabase
+    const { data: configs, error } = await supabase
       .from('institutional_approval_configs')
       .select('authorized_approver_emails');
 
-    if (configs && configs.length > 0) {
-      for (const cfg of configs) {
-        const approvers: string[] = cfg.authorized_approver_emails || [];
-        if (approvers.some((a) => a.trim().toLowerCase() === normalized)) {
-          return true;
-        }
-      }
+    if (error || !configs) {
+      console.warn('[authProfileService] Could not read approval configs:', error?.message);
+      return false;
     }
 
-    // 2. Check if user profile has an approved institutional role
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, approval_status')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (profile && profile.approval_status === 'approved') {
-      if (['municipal', 'healthcare', 'disaster_management'].includes(profile.role)) {
+    for (const cfg of configs) {
+      const approvers: string[] = cfg.authorized_approver_emails || [];
+      if (approvers.some((a) => a.trim().toLowerCase() === normalized)) {
         return true;
       }
     }
@@ -396,6 +410,29 @@ export async function isAuthorizedApprover(userId: string, email: string): Promi
   }
 
   return false;
+}
+
+/**
+ * Check if any authorized approvers have been configured in institutional_approval_configs.
+ * Used to report "No institutional approver is configured yet."
+ */
+export async function hasAnyConfiguredApprovers(): Promise<boolean> {
+  try {
+    const { data: configs, error } = await supabase
+      .from('institutional_approval_configs')
+      .select('authorized_approver_emails');
+
+    if (error || !configs || configs.length === 0) {
+      return false;
+    }
+
+    return configs.some(
+      (cfg) => Array.isArray(cfg.authorized_approver_emails) && cfg.authorized_approver_emails.length > 0
+    );
+  } catch (err: any) {
+    console.warn('[authProfileService] Error checking configured approvers:', err?.message || err);
+    return false;
+  }
 }
 
 /**
@@ -479,7 +516,7 @@ export async function reviewInstitutionalRequest(
       return { success: false, error: error.message };
     }
 
-    // If approved, update existing profile if the user has already registered
+    // If approved, update existing profile if the user has already registered and their email is confirmed
     if (decision === 'approved') {
       const { data: existingProfile } = await supabase
         .from('profiles')
@@ -488,14 +525,24 @@ export async function reviewInstitutionalRequest(
         .maybeSingle();
 
       if (existingProfile) {
-        await supabase
-          .from('profiles')
-          .update({
-            role: targetReq.requested_role,
-            approval_status: 'approved',
-            updated_at: now,
-          })
-          .eq('id', existingProfile.id);
+        let isEmailVerified = false;
+        try {
+          const { data: authUserData } = await supabase.auth.admin.getUserById(existingProfile.id);
+          isEmailVerified = Boolean(authUserData?.user?.email_confirmed_at);
+        } catch {
+          // ignore
+        }
+
+        if (isEmailVerified) {
+          await supabase
+            .from('profiles')
+            .update({
+              role: targetReq.requested_role,
+              approval_status: 'approved',
+              updated_at: now,
+            })
+            .eq('id', existingProfile.id);
+        }
       }
     }
 

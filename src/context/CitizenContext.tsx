@@ -107,24 +107,24 @@ interface CitizenContextType {
 
 const defaultWard: WardInfo = {
   id: 'loc-default',
-  name: 'Local Urban District',
-  zone: 'Active Sector',
-  center: [18.5204, 73.8567],
+  name: 'Detecting Location…',
+  zone: 'Please select a location',
+  center: [0, 0],
   bounds: [
-    [18.535, 73.845],
-    [18.535, 73.87],
-    [18.51, 73.87],
-    [18.51, 73.845],
-    [18.535, 73.845],
+    [0.015, -0.015],
+    [0.015, 0.015],
+    [-0.015, 0.015],
+    [-0.015, -0.015],
+    [0.015, -0.015],
   ],
-  population: 145000,
-  vulnerableCount: 29000,
-  treeCanopyPct: 28,
-  builtDensityPct: 72,
-  vulnerabilityIndex: 58,
-  uhiOffsetDegC: 1.8,
-  highRiskAreas: ['Unshaded Transit Arterials', 'Paved Commercial Corridors'],
-  lowRiskAreas: ['Canopy Shaded Parks', 'Civic Green Spaces'],
+  population: 0,
+  vulnerableCount: 0,
+  treeCanopyPct: 0,
+  builtDensityPct: 0,
+  vulnerabilityIndex: 0,
+  uhiOffsetDegC: 0,
+  highRiskAreas: [],
+  lowRiskAreas: [],
 };
 
 const CitizenContext = createContext<CitizenContextType | null>(null);
@@ -149,8 +149,8 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
 
   const [location, setLocation] = useState<LocationState>({
-    lat: 18.5204,
-    lng: 73.8567,
+    lat: 0,
+    lng: 0,
     isGps: false,
     gpsStatus: 'idle',
     ward: defaultWard,
@@ -382,7 +382,7 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setLocation((prev) => ({
         ...prev,
         gpsStatus: 'error',
-        gpsErrorMsg: 'Geolocation is not supported by your browser. Using Pune Central as default.',
+        gpsErrorMsg: 'Geolocation is not supported by your browser. Please select a location manually.',
       }));
       return;
     }
@@ -498,9 +498,33 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const unreadAlertCount = alerts.filter((a) => !a.isRead).length;
 
-  // Initial load
+  // Initial load — try GPS first, then fall back to asking user to select location
   useEffect(() => {
-    fetchAllData(location.lat, location.lng, false);
+    if (navigator.geolocation) {
+      setLocation((prev) => ({ ...prev, gpsStatus: 'requesting' }));
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          setLocation((prev) => ({
+            ...prev,
+            lat: latitude,
+            lng: longitude,
+            isGps: true,
+            gpsStatus: 'granted',
+          }));
+          fetchAllData(latitude, longitude, false);
+        },
+        () => {
+          // GPS denied — use first location from allLocations as default
+          // But do NOT silently default to Pune
+          setLocation((prev) => ({ ...prev, gpsStatus: 'denied' }));
+          // Don't fetch with 0,0 — user must select a location
+        },
+        { timeout: 8000, enableHighAccuracy: true }
+      );
+    } else {
+      setLocation((prev) => ({ ...prev, gpsStatus: 'error', gpsErrorMsg: 'Geolocation not supported.' }));
+    }
   }, []);
 
   return (

@@ -725,12 +725,12 @@ export const RealtimeThermalHeatmap: React.FC<RealtimeThermalHeatmapProps> = ({
             <button
               onClick={() => {
                 if (mapInstanceRef.current) {
-                  mapInstanceRef.current.setView([18.5204, 73.8567], 13, { animate: true });
+                  mapInstanceRef.current.setView([location.lat, location.lng], 13, { animate: true });
                 }
               }}
               className="px-2 py-1 rounded-xl hover:bg-slate-100 transition-colors"
             >
-              Pune
+              Current Location
             </button>
             <button
               onClick={() => {

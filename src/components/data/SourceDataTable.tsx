@@ -37,8 +37,8 @@ export interface SourceDataTableProps {
 }
 
 export const SourceDataTable: React.FC<SourceDataTableProps> = ({
-  lat = 18.5204,
-  lng = 73.8567,
+  lat,
+  lng,
   compact = false,
   filterVariable,
   filterSource,
@@ -62,6 +62,7 @@ export const SourceDataTable: React.FC<SourceDataTableProps> = ({
   const [viewMode, setViewMode] = useState<'summary' | 'full25'>('summary');
 
   const loadData = async (force = false) => {
+    if (lat === undefined || lng === undefined) return;
     setIsLoading(true);
     try {
       const res = await fetch(`/api/data/provenance?lat=${lat}&lng=${lng}${force ? '&refresh=true' : ''}`);
@@ -81,7 +82,9 @@ export const SourceDataTable: React.FC<SourceDataTableProps> = ({
   };
 
   useEffect(() => {
-    loadData();
+    if (lat !== undefined && lng !== undefined) {
+      loadData();
+    }
   }, [lat, lng]);
 
   // Extract raw entries and apply DEMO quarantine
@@ -804,7 +807,7 @@ export const SourceDataTable: React.FC<SourceDataTableProps> = ({
             <span>•</span>
             <span>Multi-Horizon Verification Ladder Active</span>
             <span>•</span>
-            <span>Spatial Mesh: Pune (18.5204°N, 73.8567°E)</span>
+            <span>Spatial Mesh: {lat !== undefined && lng !== undefined ? `(${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)` : 'Selected Location'}</span>
           </div>
         </div>
       </div>

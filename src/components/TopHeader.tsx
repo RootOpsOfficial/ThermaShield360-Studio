@@ -575,7 +575,7 @@ export const TopHeader: React.FC = () => {
       </div>
 
       {showValidationCenter && (
-        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} lat={location.lat} lng={location.lng} locationName={location.ward?.name} />
       )}
     </header>
   );

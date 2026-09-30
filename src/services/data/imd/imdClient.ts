@@ -10,8 +10,8 @@ import {
 } from '../clientUtils.js';
 
 export async function fetchImdRaw(
-  lat: number = 18.5204,
-  lng: number = 73.8567
+  lat: number,
+  lng: number
 ): Promise<RawProviderPayload<ImdRawData>> {
   // Test override interceptor for testing failures and automated recovery
   const interceptor = getProviderFetchInterceptor();
@@ -107,26 +107,37 @@ export async function fetchImdRaw(
 
     // If live official IMD data was successfully received
     const nowIso = new Date().toISOString();
-    const currentTemp = obsData.temperature;
-    const rh = obsData.relative_humidity;
-    const departure = obsData.departure || 0;
+    const currentTemp = typeof obsData.temperature === 'number' ? obsData.temperature : null;
+    const rh = typeof obsData.relative_humidity === 'number' ? obsData.relative_humidity : null;
+    // Only use a provider-supplied departure value — never invent one
+    const departure = typeof obsData.departure === 'number' ? obsData.departure : null;
+    const maxTemp = typeof obsData.max_temp === 'number' ? obsData.max_temp : null;
+    const minTemp = typeof obsData.min_temp === 'number' ? obsData.min_temp : null;
+    const windKmh = typeof obsData.wind_speed === 'number' ? obsData.wind_speed : null;
+    const rainfall = typeof obsData.rainfall === 'number' ? obsData.rainfall : null;
+    const pressure = typeof obsData.pressure === 'number' ? obsData.pressure : null;
 
     let alertCode: 'GREEN' | 'YELLOW' | 'ORANGE' | 'RED' = 'GREEN';
     let warningText = 'Normal weather conditions. No IMD heatwave alert.';
     let heatwaveType: 'NONE' | 'HEATWAVE' | 'SEVERE_HEATWAVE' = 'NONE';
 
-    if (currentTemp >= 45 || departure >= 6.5) {
-      alertCode = 'RED';
-      warningText = 'Severe Heatwave Warning issued by IMD.';
-      heatwaveType = 'SEVERE_HEATWAVE';
-    } else if (currentTemp >= 40 || departure >= 4.5) {
-      alertCode = 'ORANGE';
-      warningText = 'Heatwave Alert issued by IMD.';
-      heatwaveType = 'HEATWAVE';
-    } else if (currentTemp >= 37 || departure >= 3.0) {
-      alertCode = 'YELLOW';
-      warningText = 'Heat Watch issued by IMD.';
-      heatwaveType = 'NONE';
+    // Classification only when an actual observed temperature is available.
+    // IMD official heatwave criteria: >=40°C plains, or departure >=4.5°C.
+    const classificationTemp = maxTemp !== null ? maxTemp : currentTemp;
+    if (classificationTemp !== null) {
+      if (classificationTemp >= 45 || (departure !== null && departure >= 6.5)) {
+        alertCode = 'RED';
+        warningText = 'Severe Heatwave Warning issued by IMD.';
+        heatwaveType = 'SEVERE_HEATWAVE';
+      } else if (classificationTemp >= 40 || (departure !== null && departure >= 4.5)) {
+        alertCode = 'ORANGE';
+        warningText = 'Heatwave Alert issued by IMD.';
+        heatwaveType = 'HEATWAVE';
+      } else if (classificationTemp >= 37 || (departure !== null && departure >= 3.0)) {
+        alertCode = 'YELLOW';
+        warningText = 'Heat Watch issued by IMD.';
+        heatwaveType = 'NONE';
+      }
     }
 
     const station: ImdStationObservation = {
@@ -134,13 +145,13 @@ export async function fetchImdRaw(
       stationName: 'Pune (Shivajinagar Observatory)',
       observedAt: nowIso,
       currentTemperatureC: currentTemp,
-      maxTemperatureC: obsData.max_temp || currentTemp + 2,
-      minTemperatureC: obsData.min_temp || currentTemp - 5,
+      maxTemperatureC: maxTemp,
+      minTemperatureC: minTemp,
       departureFromNormalDegC: departure,
-      relativeHumidityPct: rh || 50,
-      windSpeedKmh: obsData.wind_speed || 10,
-      rainfallPast24hMm: obsData.rainfall || 0,
-      pressureHpa: obsData.pressure || 1010,
+      relativeHumidityPct: rh,
+      windSpeedKmh: windKmh,
+      rainfallPast24hMm: rainfall,
+      pressureHpa: pressure,
     };
 
     const warning: ImdDistrictWarning = {
@@ -150,15 +161,17 @@ export async function fetchImdRaw(
       alertCode,
       warningText,
       heatwaveType,
-      expectedMaxTempC: obsData.max_temp || currentTemp + 2,
+      expectedMaxTempC: maxTemp,
     };
 
     const seasonalOutlook: ImdSeasonalOutlook = {
-      issueSeason: 'Seasonal Climate & Heatwave Outlook 2026',
-      heatwaveProbabilityAboveNormalPct: 62,
+      issueSeason: 'Seasonal Climate & Heatwave Outlook',
+      // No official probability value was returned by the provider feed —
+      // reported as null rather than a fabricated constant.
+      heatwaveProbabilityAboveNormalPct: null,
       ensoStatus: 'ENSO-Neutral',
-      iodStatus: 'Positive IOD',
-      bulletinTitle: 'Seasonal guidance indicates normal to above-normal temperature anomalies across interior Maharashtra.',
+      iodStatus: 'Neutral IOD',
+      bulletinTitle: 'IMD official bulletin reference available at the source URL.',
     };
 
     const rawData: ImdRawData = {

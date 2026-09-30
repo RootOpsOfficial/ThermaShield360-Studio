@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import assert from 'node:assert';
 import { checkAllProvidersHealth } from './services/data/providerHealthService.js';
 import { ingestAndAuditAllSources } from './services/validation/provenanceLedger.js';

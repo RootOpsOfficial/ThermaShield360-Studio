@@ -9,7 +9,10 @@
     "start": "node server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx src/testPipeline.ts",
+    "test:pipeline": "tsx src/testPipeline.ts",
+    "test:locations": "tsx src/testLocationVerification.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

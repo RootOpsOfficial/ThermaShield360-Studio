@@ -3,8 +3,8 @@ import { GoogleMapsGisData } from './googleTypes.js';
 import { PROVIDER_REQUEST_TIMEOUT_MS } from '../clientUtils.js';
 
 export async function fetchGoogleMapsGisStatus(
-  lat: number = 18.5204,
-  lng: number = 73.8567
+  lat: number,
+  lng: number
 ): Promise<RawProviderPayload<GoogleMapsGisData>> {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
   const startTime = Date.now();

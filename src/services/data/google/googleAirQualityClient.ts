@@ -9,8 +9,8 @@ import {
 } from '../clientUtils.js';
 
 export async function fetchGoogleAirQualityRaw(
-  lat: number = 18.5204,
-  lng: number = 73.8567
+  lat: number,
+  lng: number
 ): Promise<RawProviderPayload<GoogleAirQualityRawData>> {
   const interceptor = getProviderFetchInterceptor();
   if (interceptor) {

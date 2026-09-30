@@ -49,6 +49,7 @@ export const CitizenHomePage: React.FC = () => {
     thermalCurrent,
     riskCurrent,
     heatwaveStatus,
+    longRangeReport,
     healthcareFacilities,
     location,
     selectWard,
@@ -106,6 +107,11 @@ export const CitizenHomePage: React.FC = () => {
   const peakTemp = weatherForecast?.[0]?.tempMax ?? currentTemp + 2.8;
   const peakTime = riskCurrent?.peakPeriod || '12:30 PM – 04:30 PM';
   const compositeVulnerability = riskCurrent?.riskScore ?? 78;
+
+  // Live-data flags — the UI shows an explicit "unavailable" marker instead of an invented value.
+  const hasLiveTemp = weatherCurrent !== null && typeof weatherCurrent.temp === 'number';
+  const hasLivePeakTime = !!riskCurrent?.peakPeriod;
+  const hasLiveVulnerability = riskCurrent !== null && typeof riskCurrent.riskScore === 'number';
 
   // Curated major locations/cities across Maharashtra & Nationwide India
   const ALL_POPULAR_LOCATIONS = [
@@ -570,7 +576,7 @@ export const CitizenHomePage: React.FC = () => {
                 </div>
                 <div className="mt-1 flex items-baseline gap-2">
                   <span className={`text-2xl sm:text-3xl font-black tracking-tight ${block1Style.cardValueClass}`}>
-                    {formatTemp(currentTemp)}
+                    {hasLiveTemp ? formatTemp(currentTemp) : '—'}
                   </span>
                 </div>
               </div>
@@ -578,7 +584,11 @@ export const CitizenHomePage: React.FC = () => {
               <div className={`mt-2 pt-1.5 border-t ${block1Style.cardDivider} flex items-center justify-between text-xs`}>
                 <span className={`${block1Style.cardSubTextClass} text-[11px] font-medium`}>Perceived Heat Index:</span>
                 <span className="font-extrabold text-orange-600 text-xs">
-                  {thermalCurrent ? `${thermalCurrent.heatIndex}°C` : `${(currentTemp + 3.5).toFixed(1)}°C`}
+                  {thermalCurrent
+                    ? `${thermalCurrent.heatIndex}°C`
+                    : hasLiveTemp
+                    ? `${(currentTemp + 3.5).toFixed(1)}°C`
+                    : '—'}
                 </span>
               </div>
             </div>
@@ -596,12 +606,12 @@ export const CitizenHomePage: React.FC = () => {
                 </div>
                 <div className="mt-1 space-y-0.5">
                   <div className={`text-sm sm:text-base font-black leading-tight ${block1Style.cardValueClass}`}>
-                    {peakTime}
+                    {hasLivePeakTime ? peakTime : '—'}
                   </div>
                   <div className={`flex items-center gap-1.5 text-xs ${block1Style.cardSubTextClass}`}>
                     <span className="text-[11px]">Expected Peak:</span>
                     <span className="font-black text-red-600 text-xs">
-                      {formatTemp(peakTemp)}
+                      {hasLiveTemp ? formatTemp(peakTemp) : '—'}
                     </span>
                   </div>
                 </div>
@@ -625,7 +635,7 @@ export const CitizenHomePage: React.FC = () => {
                 </div>
                 <div className="mt-1 flex items-baseline gap-1">
                   <span className={`text-2xl sm:text-3xl font-black tracking-tight ${block1Style.cardValueClass}`}>
-                    {compositeVulnerability}
+                    {hasLiveVulnerability ? compositeVulnerability : '—'}
                   </span>
                   <span className="text-sm font-extrabold opacity-60">/ 100</span>
                 </div>
@@ -746,98 +756,36 @@ export const CitizenHomePage: React.FC = () => {
 
         {/* Periods of Wave Arranged Sequentially Top to Bottom */}
         <div className="space-y-3">
-          {[
-            {
-              id: '1-30-days',
-              horizon: '1 to 30 Days',
-              status: 'HEATWAVE COMING',
-              isComing: true,
-              window: 'Oct 05 – Oct 13, 2026',
-              score: '96% Ensemble Agreement',
-              whyHappening:
-                'Post-monsoon continental dry air intrusion combined with an upper-tropospheric anticyclone ridge trapping intense solar radiation across the Maharashtra plateau with low wind ventilation.',
+          {(longRangeReport?.horizons ?? []).length === 0 && (
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 font-medium">
+              No verified early-warning data is available for this location yet. Live provider responses are still being resolved.
+            </div>
+          )}
+          {(longRangeReport?.horizons ?? [])
+            .map((horizon: any) => ({
+              id: horizon.id,
+              horizon: horizon.timeRangeLabel,
+              status: horizon.isHeatwaveComing ? "HEATWAVE COMING" : "NO HEATWAVE",
+              isComing: horizon.isHeatwaveComing,
+              window: horizon.expectedOnsetDates,
+              score:
+                horizon.unifiedConfidencePct +
+                "% " +
+                (horizon.evidenceBasis === "CLIMATOLOGICAL" ? "Climatological" : "Model Agreement"),
+              whyHappening: [horizon.statusHeadline, ...(horizon.climateDrivers ?? [])]
+                .filter(Boolean)
+                .join(" "),
               expectedTemp:
-                'Severe daytime maximums of 40.5°C – 42.2°C (3.5°C to 4.5°C above seasonal normal). Nocturnal minimums will remain elevated above 25.5°C, providing no overnight cooling relief.',
-              howToProtect:
-                'Avoid outdoor exposure between 11:30 AM and 4:30 PM; drink ORS or salted lemon water every 30 minutes; draw reflective curtains on sun-facing windows; check local municipal hydration points.',
+                horizon.models && horizon.models.length > 0 && horizon.models[0].prediction
+                  ? horizon.models[0].prediction +
+                    (horizon.expectedDuration ? " Duration: " + horizon.expectedDuration + "." : "")
+                  : "No verified temperature evidence is available for this horizon.",
+              howToProtect: (horizon.citizenGuidance?.actionItems ?? []).join(" "),
               whoAffected:
-                'Street vendors, outdoor construction laborers, traffic police, school students during afternoon commutes, senior citizens (65+), and patients with cardiovascular or renal conditions.',
-              otherThings:
-                'Municipal Corporation and Disaster Management will activate public water kiosks and transit misting corridors. Early warning lead-time: 14 days. Models: ECMWF, NOAA GFS, IMD.',
-            },
-            {
-              id: '1-2-months',
-              horizon: '1 to 2 Month',
-              status: 'HEATWAVE COMING',
-              isComing: true,
-              window: 'Oct 18 – Oct 26, 2026',
-              score: '90% Ensemble Agreement',
-              whyHappening:
-                'Extended secondary heat stagnation cell with calm winds (<4 km/h), suppressing sea-breeze moisture penetration and intensifying ground heat re-radiation.',
-              expectedTemp:
-                'Daytime maximums reaching 39.5°C – 41.0°C. Wet Bulb Globe Temperature (WBGT) projected around 31.0°C, causing significant physical fatigue during light exertion.',
-              howToProtect:
-                'Pre-hydrate before traveling; carry umbrellas or wide-brim headgear; shift heavy physical work to early morning hours before 10:00 AM; ensure children and elderly drink fluids regularly.',
-              whoAffected:
-                'Delivery couriers, construction workers, citizens living in top-floor uninsulated tin/concrete roofs, and pregnant women.',
-              otherThings:
-                'Primary health centers stocked with oral rehydration salts and intravenous fluids. Monitored through NOAA CFSv2 long-range climate ensembles.',
-            },
-            {
-              id: '2-5-months',
-              horizon: '2 to 5 Month',
-              status: 'NO HEATWAVE',
-              isComing: false,
-              window: 'Nov 2026 – Feb 2027 (Winter Temperate)',
-              score: '95% Ensemble Confidence',
-              whyHappening:
-                'Prevailing northeasterly continental winds bringing cool, dry air from sub-Himalayan latitudes, allowing efficient overnight radiative surface cooling and balanced solar irradiance.',
-              expectedTemp:
-                'Comfortable seasonal highs of 28.0°C – 31.0°C; refreshing night temperatures dipping to 12.0°C – 16.5°C. Zero heatwave probability.',
-              howToProtect:
-                'Safe for all regular outdoor athletic activities, physical labor, and community commuting without thermal restrictions. Standard winter skin hydration advised.',
-              whoAffected:
-                'No citizen demographics at thermal heat risk. Standard seasonal precautions for morning cold air for respiratory and asthma patients.',
-              otherThings:
-                'Municipal heat mitigation protocols in baseline monitoring mode. Civic tree plantation and urban cool surface coatings scheduled during this window.',
-            },
-            {
-              id: '5-8-months',
-              horizon: '5 to 8 Month',
-              status: 'HEATWAVE COMING',
-              isComing: true,
-              window: 'Apr 12 – Apr 22, 2027',
-              score: '88% Ensemble Agreement',
-              whyHappening:
-                'Pre-monsoon continental heating over northwestern arid corridors channeling blistering westerly winds into the Deccan plateau with intense clear-sky solar radiation.',
-              expectedTemp:
-                'Dangerous daytime peaks of 41.5°C – 43.5°C. Universal Thermal Climate Index (UTCI) projected above 41.0°C (Very Strong Heat Stress).',
-              howToProtect:
-                'Reschedule outdoor work to early mornings (before 10:00 AM) or after 5:30 PM; maintain continuous indoor ventilation; utilize wet blinds or evaporative coolers; visit civic cooling centers.',
-              whoAffected:
-                'Unorganized outdoor laborers, gig delivery workers, young children, senior citizens living independently, and pets/livestock.',
-              otherThings:
-                'Triggers Heat Action Plan (HAP) Level-2 Orange Alert. Civic cooling shelters operational at key transit hubs, bus stations, and central railway terminals.',
-            },
-            {
-              id: '8-12-months',
-              horizon: '8 to 12 Month',
-              status: 'HEATWAVE COMING',
-              isComing: true,
-              window: 'May 16 – May 29, 2027',
-              score: '85% Ensemble Agreement',
-              whyHappening:
-                'Solar zenith passage combined with severe soil moisture deficit, calm surface boundary winds, and high urban built thermal inertia in core city wards.',
-              expectedTemp:
-                'Critical extreme temperatures of 42.5°C – 44.5°C. Apparent Heat Index exceeding 46.0°C with dangerous cumulative thermal load and night thermal stress.',
-              howToProtect:
-                'Strictly avoid unshaded outdoor activities between 11:00 AM and 5:00 PM; never leave children or pets inside parked vehicles; seek immediate medical attention if experiencing confusion or dizziness.',
-              whoAffected:
-                'All citizens upon extended exposure; life-threatening risk for chronic cardiac, hypertension, and renal patients.',
-              otherThings:
-                'Level-3 Red Alert operational guidelines: government and municipal hospitals operate dedicated air-conditioned heat stroke wards with emergency ice bath facilities.',
-            },
-          ].map((period) => {
+                "Outdoor workers (construction, delivery, traffic police), street vendors, children, senior citizens (65+) and people with cardiovascular, renal or respiratory conditions.",
+              otherThings: [horizon.confidenceBasis, horizon.disclaimer].filter(Boolean).join(" "),
+            }))
+            .map((period) => {
             const isExpanded = expandedHeatwavePeriod === period.id;
             return (
               <div
@@ -961,7 +909,27 @@ export const CitizenHomePage: React.FC = () => {
 
         {/* Section Footer */}
         <div className="mt-4 pt-3 border-t border-black/5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-          <span>Climatological Models: <strong>ECMWF • NOAA • IMD • GFS</strong></span>
+          <span>
+            Evidence Sources:{' '}
+            <strong>
+              {[
+                ...(longRangeReport?.dataBasis?.consensusSources ?? []),
+                ...(longRangeReport?.dataBasis?.ensembleAvailable ? ['NOAA GEFS'] : []),
+                ...(longRangeReport?.dataBasis?.climatologyAvailable
+                  ? [longRangeReport?.dataBasis?.climatologySource ?? 'NASA POWER']
+                  : []),
+              ].join(' • ') || 'Resolving live providers…'}
+            </strong>
+            {(longRangeReport?.dataBasis?.unavailableSources ?? []).length > 0 && (
+              <span className="text-amber-700">
+                {' '}
+                · Unavailable:{' '}
+                {(longRangeReport?.dataBasis?.unavailableSources ?? [])
+                  .map((s: string) => s.split(' — ')[0])
+                  .join(', ')}
+              </span>
+            )}
+          </span>
           <button
             onClick={() => setActivePage('future')}
             className="font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
@@ -1111,7 +1079,7 @@ export const CitizenHomePage: React.FC = () => {
       </section>
 
       {showProvenanceModal && (
-        <DataValidationCenter isModal onClose={() => setShowProvenanceModal(false)} />
+        <DataValidationCenter isModal onClose={() => setShowProvenanceModal(false)} lat={location.lat} lng={location.lng} locationName={location.ward?.name} />
       )}
     </div>
   );

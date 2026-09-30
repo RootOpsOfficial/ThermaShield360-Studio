@@ -229,8 +229,8 @@ export const GoogleThermalGisMap: React.FC<GoogleThermalGisMapProps> = ({
 
   const mapCenter = useMemo(() => {
     return {
-      lat: centerLat ?? location.lat ?? 18.5204,
-      lng: centerLng ?? location.lng ?? 73.8567,
+      lat: centerLat ?? location.lat,
+      lng: centerLng ?? location.lng,
     };
   }, [centerLat, centerLng, location.lat, location.lng]);
 

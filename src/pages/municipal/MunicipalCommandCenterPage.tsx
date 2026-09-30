@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useMunicipal } from '../../context/MunicipalContext.js';
 import { PuneWardMap } from '../../components/PuneWardMap.js';
+import { MunicipalWardRealMap } from '../../components/municipal/MunicipalWardRealMap.js';
 import { MunicipalWardData } from '../../types/municipal.js';
 import {
   Flame,
@@ -17,6 +18,8 @@ import {
   CheckCircle2,
   RefreshCw,
   ExternalLink,
+  Map as MapIcon,
+  Boxes,
 } from 'lucide-react';
 import { DataValidationCenter } from '../../components/data/DataValidationCenter.js';
 import { SourceDataTable } from '../../components/data/SourceDataTable.js';
@@ -34,6 +37,7 @@ export const MunicipalCommandCenterPage: React.FC = () => {
 
   const [activePreviewWard, setActivePreviewWard] = useState<MunicipalWardData | null>(null);
   const [showValidationCenter, setShowValidationCenter] = useState(false);
+  const [previewMapView, setPreviewMapView] = useState<'real' | 'vector'>('real');
 
   // Loading state
   if (!summary) {
@@ -326,13 +330,45 @@ export const MunicipalCommandCenterPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Map Preview: Shows only the primary heat risk layer */}
-            <PuneWardMap
-              wards={wards}
-              selectedWardId={displayedWard?.id}
-              onSelectWard={handleSelectWardFromMap}
-              compact={true}
-            />
+            {/* Map Preview: real basemap or vector schematic */}
+            <div className="flex items-center justify-end mb-2">
+              <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+                <button
+                  onClick={() => setPreviewMapView('real')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${
+                    previewMapView === 'real' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                  }`}
+                >
+                  <MapIcon className="w-3 h-3" />
+                  <span>Live Map</span>
+                </button>
+                <button
+                  onClick={() => setPreviewMapView('vector')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${
+                    previewMapView === 'vector' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                  }`}
+                >
+                  <Boxes className="w-3 h-3" />
+                  <span>Schematic</span>
+                </button>
+              </div>
+            </div>
+
+            {previewMapView === 'real' ? (
+              <MunicipalWardRealMap
+                wards={wards}
+                selectedWardId={displayedWard?.id}
+                onSelectWard={handleSelectWardFromMap}
+                heightClass="h-[420px]"
+              />
+            ) : (
+              <PuneWardMap
+                wards={wards}
+                selectedWardId={displayedWard?.id}
+                onSelectWard={handleSelectWardFromMap}
+                compact={true}
+              />
+            )}
           </div>
 
           <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
@@ -552,8 +588,8 @@ export const MunicipalCommandCenterPage: React.FC = () => {
       {/* ============================================================ */}
       <div className="pt-2">
         <SourceDataTable
-          lat={displayedWard?.center ? displayedWard.center[0] : 18.5204}
-          lng={displayedWard?.center ? displayedWard.center[1] : 73.8567}
+          lat={displayedWard?.center ? displayedWard.center[0] : undefined}
+          lng={displayedWard?.center ? displayedWard.center[1] : undefined}
           title="Municipal Data Sources & Validation Provenance"
           subtitle={`Traceable atmospheric, NWP, and in-situ feeds informing ${displayedWard?.name || 'Municipal Ward'} heat risk`}
           onOpenValidationCenter={() => setShowValidationCenter(true)}
@@ -561,7 +597,7 @@ export const MunicipalCommandCenterPage: React.FC = () => {
       </div>
 
       {showValidationCenter && (
-        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} lat={displayedWard?.center?.[0]} lng={displayedWard?.center?.[1]} locationName={displayedWard?.name} />
       )}
     </div>
   );

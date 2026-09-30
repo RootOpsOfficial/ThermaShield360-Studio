@@ -13,6 +13,29 @@ export interface ModelContribution {
   status: string;
 }
 
+/**
+ * A single, comparable row for EVERY source that returned data for this location,
+ * whether or not it participates in the weighted consensus. This allows authorities
+ * to compare independent source signals (e.g. ECMWF vs GFS vs Open-Meteo vs ERA5)
+ * side-by-side without altering the scientifically-correct consensus weighting.
+ */
+export interface SourceComparisonEntry {
+  source: string;
+  model: string;
+  /** Data semantics for this row (LIVE / FORECAST / REANALYSIS / OBSERVED …) */
+  dataType: string;
+  temperatureC: number | null;
+  humidityPct: number | null;
+  windSpeedMs: number | null;
+  solarRadiationWm2: number | null;
+  /** Whether this source participates in the weighted temperature consensus */
+  inConsensus: boolean;
+  agreementWithFusedDegC: number | null;
+  status: string;
+  run: string | null;
+  validTime: string | null;
+}
+
 export interface InterModelAgreementMatrix {
   spreadTempDegC: number;
   stdDevTempDegC: number;
@@ -50,6 +73,8 @@ export interface FusedConsensusMeteorology {
   groundObservation: GroundObservationTruth | null;
   agreementMatrix: InterModelAgreementMatrix;
   contributingModels: ModelContribution[];
+  /** Every source that returned data for this location, for side-by-side comparison */
+  sourceComparison: SourceComparisonEntry[];
   consensusTimestamp: string;
   provenanceSummary: string;
 }
@@ -77,6 +102,39 @@ export function isRecordQuarantined(record: ThermaShieldNormalizedRecord): boole
     }
   }
   return false;
+}
+
+/**
+ * Builds a comparable row for every source that returned a usable observation,
+ * regardless of whether it enters the weighted consensus. This preserves source
+ * identity and lets the UI show a true multi-source comparison.
+ */
+function buildSourceComparison(
+  unquarantined: ThermaShieldNormalizedRecord[],
+  fusedTemp: number | null,
+  consensusRecords: ThermaShieldNormalizedRecord[]
+): SourceComparisonEntry[] {
+  const consensusIds = new Set(consensusRecords.map((r) => r.id));
+  return unquarantined
+    .filter((r) => r.availability === 'LIVE' || r.availability === 'DEGRADED')
+    .map((r) => ({
+      source: r.source,
+      model: r.model,
+      dataType: r.dataType,
+      temperatureC: typeof r.temperatureC === 'number' ? r.temperatureC : null,
+      humidityPct: r.relativeHumidityPercent,
+      windSpeedMs: r.windSpeedMs,
+      solarRadiationWm2: r.solarRadiationWm2,
+      inConsensus: consensusIds.has(r.id),
+      agreementWithFusedDegC:
+        fusedTemp !== null && typeof r.temperatureC === 'number'
+          ? Math.round((r.temperatureC - fusedTemp) * 10) / 10
+          : null,
+      status: r.validationStatus,
+      run: r.run,
+      validTime: r.validTime,
+    }))
+    .sort((a, b) => a.source.localeCompare(b.source));
 }
 
 export function fuseMultiSourceRecords(
@@ -147,6 +205,7 @@ export function fuseMultiSourceRecords(
         },
       },
       contributingModels: [],
+      sourceComparison: buildSourceComparison(unquarantined, null, []),
       consensusTimestamp: new Date().toISOString(),
       provenanceSummary: 'Zero live operational sources available for consensus computation',
     };
@@ -307,6 +366,7 @@ export function fuseMultiSourceRecords(
     groundObservation,
     agreementMatrix,
     contributingModels,
+    sourceComparison: buildSourceComparison(unquarantined, fusedTemp, activeRecords),
     consensusTimestamp: new Date().toISOString(),
     provenanceSummary: `Fused consensus across ${activeRecords.length} live operational sources (${activeRecords.map((r) => r.source).join(', ')})`,
   };

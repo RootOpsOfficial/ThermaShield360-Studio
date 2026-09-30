@@ -875,8 +875,8 @@ export const HealthCommandCenterPage: React.FC = () => {
       {/* ============================================================ */}
       <div className="pt-2">
         <SourceDataTable
-          lat={currentLocation?.lat ?? 18.5204}
-          lng={currentLocation?.lng ?? 73.8567}
+          lat={currentLocation?.lat}
+          lng={currentLocation?.lng}
           title="Healthcare Data Sources & Validation Provenance"
           subtitle="Traceable clinical meteorology & in-situ station inputs powering heatwave morbidity projections"
           onOpenValidationCenter={() => setShowValidationCenter(true)}
@@ -884,7 +884,7 @@ export const HealthCommandCenterPage: React.FC = () => {
       </div>
 
       {showValidationCenter && (
-        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} lat={currentLocation?.lat} lng={currentLocation?.lng} locationName={currentLocation?.name} />
       )}
     </div>
   );

@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { ThermalStressBlock } from '../components/ThermalStressBlock.js';
 import { ProvenanceTable } from '../components/data/ProvenanceTable.js';
 import { DataValidationCenter } from '../components/data/DataValidationCenter.js';
+import { useCitizen } from '../context/CitizenContext.js';
 import { ShieldCheck, Database, Layers } from 'lucide-react';
 
 export const ThermalStressPage: React.FC = () => {
   const [showValidationCenter, setShowValidationCenter] = useState(false);
+  const { location } = useCitizen();
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-200">
@@ -35,11 +37,11 @@ export const ThermalStressPage: React.FC = () => {
           </button>
         </div>
 
-        <ProvenanceTable onOpenValidationCenter={() => setShowValidationCenter(true)} />
+        <ProvenanceTable lat={location.lat} lng={location.lng} onOpenValidationCenter={() => setShowValidationCenter(true)} />
       </div>
 
       {showValidationCenter && (
-        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} lat={location.lat} lng={location.lng} locationName={location.ward?.name} />
       )}
     </div>
   );

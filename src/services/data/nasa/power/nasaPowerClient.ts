@@ -11,8 +11,8 @@ import {
 } from '../../clientUtils.js';
 
 export async function fetchNasaPowerRaw(
-  lat: number = 18.5204,
-  lng: number = 73.8567
+  lat: number,
+  lng: number
 ): Promise<RawProviderPayload<NasaPowerRawData>> {
   // Test override interceptor for testing failures and automated recovery
   const interceptor = getProviderFetchInterceptor();

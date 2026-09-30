@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useMunicipal } from '../../context/MunicipalContext.js';
 import { PuneWardMap } from '../../components/PuneWardMap.js';
+import { MunicipalWardRealMap } from '../../components/municipal/MunicipalWardRealMap.js';
 import { WardDetailModal } from '../../components/WardDetailModal.js';
 import {
   Flame,
@@ -10,12 +11,16 @@ import {
   Maximize2,
   Layers,
   ShieldAlert,
+  Map as MapIcon,
+  Boxes,
 } from 'lucide-react';
 
 export const WardRiskMapPage: React.FC = () => {
   const { wards, selectedWard, setSelectedWard, setActiveMunicipalPage } = useMunicipal();
   const [filterRisk, setFilterRisk] = useState<string>('All');
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  // Map view mode: real geographic basemap vs. the original vector boundary schematic
+  const [mapView, setMapView] = useState<'real' | 'vector'>('real');
 
   const activeWard = selectedWard || (wards.length > 0 ? wards[0] : null);
 
@@ -82,16 +87,51 @@ export const WardRiskMapPage: React.FC = () => {
             </span>
           </div>
 
-          <PuneWardMap
-            wards={filteredWards}
-            selectedWardId={activeWard?.id}
-            onSelectWard={(ward) => setSelectedWard(ward)}
-            compact={false}
-          />
+          {/* View mode toggle: real basemap vs vector schematic */}
+          <div className="flex items-center gap-1.5 mb-3">
+            <div className="inline-flex rounded-xl bg-slate-100 p-0.5">
+              <button
+                onClick={() => setMapView('real')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                  mapView === 'real' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                <span>Live Map</span>
+              </button>
+              <button
+                onClick={() => setMapView('vector')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                  mapView === 'vector' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>Vector Schematic</span>
+              </button>
+            </div>
+          </div>
+
+          {mapView === 'real' ? (
+            <MunicipalWardRealMap
+              wards={filteredWards}
+              selectedWardId={activeWard?.id}
+              onSelectWard={(w) => setSelectedWard(w)}
+              heightClass="h-[560px]"
+            />
+          ) : (
+            <PuneWardMap
+              wards={filteredWards}
+              selectedWardId={activeWard?.id}
+              onSelectWard={(ward) => setSelectedWard(ward)}
+              compact={false}
+            />
+          )}
 
           <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-            <span>Click any ward polygon to inspect immediate decision indicators.</span>
-            <span className="text-[11px] font-semibold text-emerald-600">IMD AWS Connected</span>
+            <span>Click any ward on the map to inspect immediate decision indicators.</span>
+            <span className="text-[11px] font-semibold text-emerald-600">
+              {mapView === 'real' ? 'Real Basemap · OpenStreetMap' : 'Vector Schematic View'}
+            </span>
           </div>
         </div>
 

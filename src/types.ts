@@ -103,14 +103,31 @@ export interface RiskCurrent {
 
 export type HeatwavePredictionStatus = 'COMING' | 'LIKELY' | 'POSSIBLE' | 'UNLIKELY' | 'NO_HEATWAVE';
 
+/**
+ * Scientific nature of the data behind a horizon. Drives the honesty labelling in the UI:
+ * a long-lead "climatological" horizon is never presented as a day-specific forecast.
+ */
+export type EvidenceBasis =
+  | 'OPERATIONAL_FORECAST'   // real NWP forecast (ECMWF IFS / NOAA GFS / Open-Meteo)
+  | 'ENSEMBLE'               // real probabilistic ensemble (NOAA GEFS members)
+  | 'CLIMATOLOGICAL'         // real 20-year monthly climatology (NASA POWER / ERA5)
+  | 'UNAVAILABLE';           // no verified feed available — reported honestly as NULL
+
 export interface ModelConfidenceData {
-  modelName: 'ECMWF' | 'NOAA' | 'IMD' | 'GFS';
+  modelName: string;                 // 'ECMWF IFS' | 'NOAA GFS' | 'NOAA GEFS' | 'Open-Meteo' | 'ERA5' | 'NASA POWER' | 'IMD'
   fullName: string;
-  confidencePct: number;
+  /** Data semantics label: OBSERVED / FORECAST / ENSEMBLE / REANALYSIS / NOT_AVAILABLE */
+  dataType: string;
+  /** Provider availability for this location (LIVE / DEGRADED / NOT_AVAILABLE / AUTH_ERROR …) */
+  availability: string;
+  confidencePct: number | null;      // NULL when the source is unavailable or not probabilistic
   prediction: string;
-  anomalyDegC: number;
+  anomalyDegC: number | null;        // NULL when no real baseline comparison exists
   agreement: boolean;
   notes: string;
+  /** Real observed/forecast value this evidence row is based on (for auditability) */
+  observedValueC?: number | null;
+  retrievedAt?: string | null;
 }
 
 export interface UnifiedHeatwaveVerdict {
@@ -122,13 +139,18 @@ export interface UnifiedHeatwaveVerdict {
   expectedDuration: string;
   threatLevel: 'Extreme' | 'High' | 'Moderate' | 'Low';
   methodology: string;
+  evidenceBasis: EvidenceBasis;
+  confidenceBasis: string;
   contributingModels: {
-    name: 'IMD' | 'ECMWF' | 'NOAA' | 'GFS';
+    name: string;
     confidence: number;
     weightPct: number;
     contributionScore: number;
+    availability?: string;
+    dataType?: string;
   }[];
   primaryGuidance: string;
+  disclaimer?: string;
 }
 
 export interface EarlyWarningHorizon {
@@ -157,29 +179,66 @@ export interface EarlyWarningHorizon {
   expectedOnsetDates: string;
   expectedDuration: string;
   severityLevel: 'Extreme' | 'High' | 'Moderate' | 'Low';
-  models: {
-    ecmwf: ModelConfidenceData;
-    noaa: ModelConfidenceData;
-    imd: ModelConfidenceData;
-    gfs: ModelConfidenceData;
-  };
+  /** Real, per-source evidence backing this horizon (no fabricated entries) */
+  models: ModelConfidenceData[];
   climateDrivers: string[];
   citizenGuidance: {
     title: string;
     actionItems: string[];
     prepStage: string;
   };
+  /** Scientific nature of the evidence for this horizon */
+  evidenceBasis: EvidenceBasis;
+  /** Plain-language explanation of how the confidence number was derived */
+  confidenceBasis: string;
+  /** How many real forecast days actually back this horizon (0 for climatological horizons) */
+  liveForecastDays: number;
+  disclaimer?: string;
+}
+
+export interface LongRangeDataBasis {
+  /** Real operational forecast source actually used for the near-term horizon */
+  operationalForecastSource: string;
+  /** Verified forecast lead time available (days) */
+  operationalForecastDays: number;
+  /** Every provider that returned data for this location */
+  consensusSources: string[];
+  /** Real inter-model agreement score across the contributing NWP cores (%) */
+  operationalAgreementPct: number | null;
+  /** Real ensemble spread from the NOAA GEFS member set (°C) */
+  ensembleSpreadDegC: number | null;
+  /** Real GEFS member exceedance probability for the heatwave threshold (%) */
+  ensembleExceedancePct: number | null;
+  ensembleAvailable: boolean;
+  climatologyAvailable: boolean;
+  climatologySource: string;
+  climatologyReferencePeriod: string;
+  /** Providers that are genuinely unavailable for this location (never fabricated) */
+  unavailableSources: string[];
+  lastUpdated: string;
 }
 
 export interface LongRangeEarlyWarningReport {
   generatedAt: string;
   location: string;
+  coordinates: { lat: number; lng: number };
   unifiedVerdict: UnifiedHeatwaveVerdict; // The single combined output
   overallNextHeatwaveArrival: string;
   overallThreatLevel: 'Extreme' | 'High' | 'Moderate' | 'Low';
   overallConsensusStatus: string;
   modelsCompared: string[];
   horizons: EarlyWarningHorizon[];
+  dataBasis: LongRangeDataBasis;
+  /** Real 20-year monthly normals for this grid cell (for transparency in the UI) */
+  climatology: {
+    available: boolean;
+    source: string;
+    referencePeriod: string;
+    monthlyNormals: { monthKey: string; monthLabel: string; normalMaxTempC: number | null; normalRhPct: number | null }[];
+    annualPeakMonth: string | null;
+    annualPeakNormalMaxC: number | null;
+    heatProneMonthLabels: string[];
+  };
 }
 
 export interface ProtectionPoint {

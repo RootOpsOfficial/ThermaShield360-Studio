@@ -26,7 +26,8 @@ function decodeWeatherCode(code: number): string {
   return 'Clear Warm Sky';
 }
 
-// Generate realistic meteorological fallback for Pune based on current hour
+// Generate location-agnostic meteorological fallback based on current hour
+// NOT Pune-specific — uses generic temperate zone profile as modelled estimate
 function getFallbackModelledWeather(lat: number, lng: number): {
   current: WeatherCurrent;
   hourly: WeatherHourly[];
@@ -35,11 +36,13 @@ function getFallbackModelledWeather(lat: number, lng: number): {
   const now = new Date();
   const currentHour = now.getHours();
 
-  // Pune diurnal temperature profile: min at 05:00 (~24°C), peak at 14:00 (~38.5°C)
+  // Generic diurnal temperature profile — NOT Pune-specific
   const hourAngle = ((currentHour - 14) / 24) * 2 * Math.PI;
-  const tempCycle = Math.cos(hourAngle); // 1 at 14:00, -1 at 02:00
-  const baseTemp = 31.5;
-  const tempAmplitude = 7.5;
+  const tempCycle = Math.cos(hourAngle);
+  // Latitude-based base temp estimation (rough tropics vs temperate)
+  const absLat = Math.abs(lat);
+  const baseTemp = absLat < 25 ? 31.0 : absLat < 40 ? 26.0 : 20.0;
+  const tempAmplitude = 7.0;
   const currentTemp = Math.round((baseTemp + tempAmplitude * tempCycle) * 10) / 10;
 
   // Relative humidity is inverse to temp: lowest at peak heat (32%), highest at dawn (68%)
@@ -66,7 +69,7 @@ function getFallbackModelledWeather(lat: number, lng: number): {
     uvIndex: currentHour >= 10 && currentHour <= 15 ? 10 : currentHour >= 7 && currentHour <= 17 ? 5 : 0,
     pressure: 1012,
     weatherCode: 0,
-    weatherDescription: 'Intense Sunshine & Dry Heat',
+    weatherDescription: 'MODELLED — Live Source Unavailable',
     source: 'MODELLED',
     lastUpdated: now.toISOString(),
   };
@@ -145,8 +148,8 @@ function getFallbackModelledWeather(lat: number, lng: number): {
 }
 
 export async function fetchWeatherData(
-  lat: number = 18.5204,
-  lng: number = 73.8567
+  lat: number,
+  lng: number
 ): Promise<{
   current: WeatherCurrent;
   hourly: WeatherHourly[];

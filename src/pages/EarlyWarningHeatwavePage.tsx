@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useCitizen } from '../context/CitizenContext.js';
-import { EarlyWarningHorizon, UnifiedHeatwaveVerdict, WeatherDailyForecast } from '../types.js';
+import { EarlyWarningHorizon, LongRangeEarlyWarningReport, UnifiedHeatwaveVerdict, WeatherDailyForecast } from '../types.js';
 import {
   Flame,
   CheckCircle2,
@@ -69,7 +69,7 @@ const ALL_PUNE_LOCATIONS = [
 ];
 
 export const EarlyWarningHeatwavePage: React.FC = () => {
-  const { longRangeReport, location, selectWard, weatherForecast, formatTemp } = useCitizen();
+  const { longRangeReport, location, selectWard, weatherForecast, weatherHourly, formatTemp } = useCitizen();
 
   // Selected custom location or fallback to current ward name
   const [selectedLocationName, setSelectedLocationName] = useState<string>('');
@@ -83,6 +83,26 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
   const [isMainResourcesModalOpen, setIsMainResourcesModalOpen] = useState(false);
   const [activeSectorResources, setActiveSectorResources] = useState<EarlyWarningHorizon | null>(null);
   const [activeSectorAction, setActiveSectorAction] = useState<EarlyWarningHorizon | null>(null);
+
+  const closeAllOverlays = () => {
+    setIsMainResourcesModalOpen(false);
+    setActiveSectorResources(null);
+    setActiveSectorAction(null);
+  };
+
+  // Escape always closes whichever overlay is open — a guaranteed way back.
+  useEffect(() => {
+    if (!isMainResourcesModalOpen && activeSectorResources === null && activeSectorAction === null) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsMainResourcesModalOpen(false);
+        setActiveSectorResources(null);
+        setActiveSectorAction(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isMainResourcesModalOpen, activeSectorResources, activeSectorAction]);
 
   // Active location label
   const activeLocation = selectedLocationName || location.ward.name;
@@ -99,11 +119,13 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
     setIsFetchingLocation(true);
 
     const matchedLoc = ALL_PUNE_LOCATIONS.find((l) => l.name === selectedLocationName);
-    const lat = matchedLoc?.lat ?? 18.5314;
-    const lng = matchedLoc?.lng ?? 73.8446;
+    const lat = matchedLoc?.lat ?? location.lat;
+    const lng = matchedLoc?.lng ?? location.lng;
 
     Promise.all([
-      fetch(`/api/risk/long-range-warning?location=${encodeURIComponent(selectedLocationName)}`).then((res) => res.json()),
+      fetch(
+        `/api/risk/long-range-warning?lat=${lat}&lng=${lng}&location=${encodeURIComponent(selectedLocationName)}`
+      ).then((res) => res.json()),
       fetch(`/api/weather/forecast?lat=${lat}&lng=${lng}&location=${encodeURIComponent(selectedLocationName)}`).then((res) => res.json()),
     ])
       .then(([reportData, forecastData]) => {
@@ -125,48 +147,30 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
     };
   }, [selectedLocationName]);
 
-  const report = customReport || longRangeReport || {
+  const report: LongRangeEarlyWarningReport | any = customReport || longRangeReport || {
     location: activeLocation,
-    unifiedVerdict: {
-      isHeatwaveComing: true,
-      verdict: 'HEATWAVE IS COMING',
-      unifiedConfidencePct: 96,
-      confidenceGrade: 'Very High',
-      nextArrivalWindow: 'October 05 – October 13, 2026',
-      expectedDuration: '7 Consecutive Days',
-      threatLevel: 'High',
-      methodology: 'Multi-Model Skill-Weighted Ensemble: IMD (35%) + ECMWF (30%) + NOAA (20%) + GFS (15%)',
-      contributingModels: [
-        { name: 'IMD', confidence: 98, weightPct: 35, contributionScore: 34.3 },
-        { name: 'ECMWF', confidence: 96, weightPct: 30, contributionScore: 28.8 },
-        { name: 'NOAA', confidence: 92, weightPct: 20, contributionScore: 18.4 },
-        { name: 'GFS', confidence: 94, weightPct: 15, contributionScore: 14.1 },
-      ],
-      primaryGuidance: 'Imminent heatwave arrival confirmed with 96% multi-resource confidence.',
-    } as UnifiedHeatwaveVerdict,
+    unifiedVerdict: null,
     horizons: [] as EarlyWarningHorizon[],
+    dataBasis: null,
+    climatology: null,
   };
 
-  const unifiedVerdict: UnifiedHeatwaveVerdict = report.unifiedVerdict || {
-    isHeatwaveComing: true,
-    verdict: 'HEATWAVE IS COMING',
-    unifiedConfidencePct: 96,
-    confidenceGrade: 'Very High',
-    nextArrivalWindow: 'October 05 – October 13, 2026',
-    expectedDuration: '7 Consecutive Days',
-    threatLevel: 'High',
-    methodology: 'Multi-Model Skill-Weighted Ensemble: IMD (35%) + ECMWF (30%) + NOAA (20%) + GFS (15%)',
-    contributingModels: [
-      { name: 'IMD', confidence: 98, weightPct: 35, contributionScore: 34.3 },
-      { name: 'ECMWF', confidence: 96, weightPct: 30, contributionScore: 28.8 },
-      { name: 'NOAA', confidence: 92, weightPct: 20, contributionScore: 18.4 },
-      { name: 'GFS', confidence: 94, weightPct: 15, contributionScore: 14.1 },
-    ],
-    primaryGuidance: 'Imminent heatwave arrival confirmed with 96% multi-resource confidence.',
-  };
+  const unifiedVerdict: UnifiedHeatwaveVerdict | null = report.unifiedVerdict || null;
+  const dataBasis = report.dataBasis ?? null;
+  const climatologySummary = report.climatology ?? null;
 
-  const isHeatwaveComing = unifiedVerdict.isHeatwaveComing;
-  const horizons = report.horizons || [];
+  const isHeatwaveComing = unifiedVerdict?.isHeatwaveComing ?? false;
+  const horizons: EarlyWarningHorizon[] = report.horizons || [];
+
+  // Real evidence basis for the headline verdict — drives honest labelling in the UI.
+  const overallEvidenceBasis = unifiedVerdict?.evidenceBasis ?? 'UNAVAILABLE';
+  const basisLabel: Record<string, string> = {
+    OPERATIONAL_FORECAST: 'Operational Forecast',
+    ENSEMBLE: 'Ensemble Forecast',
+    CLIMATOLOGICAL: '20-Year Climatology',
+    UNAVAILABLE: 'No Verified Data',
+  };
+  const basisChipLabel = basisLabel[overallEvidenceBasis] ?? 'No Verified Data';
 
   // Sequence order: 1 Day to 30 Days (1), 1 to 3 Months (2), 3 to 5 Months (3), 5 to 8 Months (4), 8 to 12/13 Months (5)
   const HORIZON_SEQUENCE: Record<string, number> = {
@@ -217,68 +221,87 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
     setCustomDailyForecast([]);
   };
 
-  // Fallback 16 days generator with authentic Pune meteorological parameters
-  const generateFallback16Days = (_locName: string): WeatherDailyForecast[] => {
-    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const daily: WeatherDailyForecast[] = [];
-    const maxTemps = [38.6, 39.2, 40.1, 39.6, 38.2, 38.0, 37.8, 38.4, 39.1, 39.7, 40.2, 40.8, 41.2, 40.5, 39.8, 39.0];
-    const minTemps = [24.5, 25.1, 25.8, 25.2, 24.3, 23.9, 24.4, 24.9, 25.5, 26.0, 26.7, 27.3, 26.8, 25.9, 25.2, 24.6];
-
-    const now = new Date();
-    for (let d = 0; d < 16; d++) {
-      const fDate = new Date();
-      fDate.setDate(now.getDate() + d);
-      const dayName = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : daysOfWeek[fDate.getDay()];
-      const tMax = maxTemps[d];
-      const tMin = minTemps[d];
-      const isSevere = tMax >= 40.0;
-      const isHeatwave = tMax >= 38.5;
-
-      daily.push({
-        date: fDate.toISOString().split('T')[0],
-        dayName,
-        tempMax: tMax,
-        tempMin: tMin,
-        feelsLikeMax: Math.round((tMax + 3.8) * 10) / 10,
-        humidityAvg: Math.max(28, 44 - Math.round((tMax - 37) * 2)),
-        solarRadiationMax: 880 + (d % 4) * 20,
-        riskLevel: isSevere ? 'Extreme' : isHeatwave ? 'High' : 'Moderate',
-        heatwaveStatus: isSevere ? 'Severe Heatwave' : isHeatwave ? 'Heatwave' : 'None',
-        peakPeriod: '12:30 PM – 4:30 PM',
-        summary: d >= 10
-          ? 'Imminent heat surge window. Strong insolation and continental dry air advection.'
-          : isSevere
-          ? 'Severe heatwave threshold met. Dangerous afternoon solar radiation.'
-          : isHeatwave
-          ? 'Heatwave advisory active. High diurnal heat accumulation.'
-          : 'Normal conditions within seasonal baseline variability.',
-      });
-    }
-    return daily;
-  };
-
   const rawDailyList = customDailyForecast.length > 0
     ? customDailyForecast
     : (weatherForecast && weatherForecast.length > 0)
     ? weatherForecast
     : [];
 
-  const full16DayList = rawDailyList.length >= 15
+  const full16DayList = rawDailyList.length >= 1
     ? rawDailyList
-    : generateFallback16Days(activeLocation);
+    : []; // No fallback hardcoded data — show as unavailable
 
   const days1to5 = full16DayList.slice(0, 5);
   const days6to15 = full16DayList.slice(5, 15);
 
-  const d1to5Max = days1to5.length > 0 ? Math.max(...days1to5.map((d) => d.tempMax)) : 40.1;
-  const d1to5HeatwaveCount = days1to5.filter(
-    (d) => d.heatwaveStatus === 'Severe Heatwave' || d.heatwaveStatus === 'Heatwave' || d.tempMax >= 38.5
-  ).length;
+  // Ward micro-climate offset — the same offset the server applies to the
+  // operational heatwave classification, so the panel and the API always agree.
+  const uhiOffsetC = location.ward?.uhiOffsetDegC ?? 0;
+  const HEATWAVE_THRESHOLD_C = 38.5;
+  const SEVERE_HEATWAVE_THRESHOLD_C = 40.0;
 
-  const d6to15Max = days6to15.length > 0 ? Math.max(...days6to15.map((d) => d.tempMax)) : 41.2;
-  const d6to15HeatwaveCount = days6to15.filter(
-    (d) => d.heatwaveStatus === 'Severe Heatwave' || d.heatwaveStatus === 'Heatwave' || d.tempMax >= 38.5
-  ).length;
+  const adjustedMaxOf = (day: WeatherDailyForecast): number => Math.round((day.tempMax + uhiOffsetC) * 10) / 10;
+  const isHeatwaveDay = (day: WeatherDailyForecast): boolean => adjustedMaxOf(day) >= HEATWAVE_THRESHOLD_C;
+  const isSevereDay = (day: WeatherDailyForecast): boolean => adjustedMaxOf(day) >= SEVERE_HEATWAVE_THRESHOLD_C;
+  const peakAdjustedOf = (days: WeatherDailyForecast[]): number | null =>
+    days.length > 0 ? Math.round(Math.max(...days.map(adjustedMaxOf)) * 10) / 10 : null;
+
+  const d1to5Max = peakAdjustedOf(days1to5);
+  const d1to5HeatwaveCount = days1to5.filter(isHeatwaveDay).length;
+
+  const d6to15Max = peakAdjustedOf(days6to15);
+  const d6to15HeatwaveCount = days6to15.filter(isHeatwaveDay).length;
+
+  const fmtHour = (h: number): string => (h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`);
+
+  // Real peak thermal window derived from the live hourly temperature record.
+  const peakThermalWindow = (() => {
+    if (!weatherHourly || weatherHourly.length === 0) return 'Unavailable';
+    const hottestHours = Array.from(
+      new Set([...weatherHourly].sort((a, b) => b.temp - a.temp).slice(0, 5).map((h) => h.hour))
+    ).sort((a, b) => a - b);
+    if (hottestHours.length === 0) return 'Unavailable';
+    return `${fmtHour(hottestHours[0])} – ${fmtHour(hottestHours[hottestHours.length - 1])}`;
+  })();
+
+  // Real onset/surge window inside the 6–15 day forecast block.
+  const onsetSurgeLabel = (() => {
+    if (days6to15.length === 0) return 'Unavailable';
+    const firstIdx = days6to15.findIndex(isHeatwaveDay);
+    if (firstIdx === -1) return 'No threshold breach in days 6–15';
+    let lastIdx = firstIdx;
+    for (let i = firstIdx; i < days6to15.length; i++) if (isHeatwaveDay(days6to15[i])) lastIdx = i;
+    return `Days ${firstIdx + 6} – ${lastIdx + 6}`;
+  })();
+
+  // Real thermal trajectory across the extended block.
+  const extendedTrajectory = (() => {
+    if (days6to15.length < 2) return 'Trajectory unavailable';
+    const mid = Math.floor(days6to15.length / 2);
+    const avg = (arr: WeatherDailyForecast[]) => arr.reduce((sum, d) => sum + adjustedMaxOf(d), 0) / arr.length;
+    const delta = Math.round((avg(days6to15.slice(mid)) - avg(days6to15.slice(0, mid))) * 10) / 10;
+    if (delta >= 0.5) return `Escalating Heat Risk (+${delta}°C)`;
+    if (delta <= -0.5) return `Easing Heat Risk (${delta}°C)`;
+    return 'Stable Thermal Trend';
+  })();
+
+  // Real inter-model agreement and the real source names.
+  const modelAgreementPct: number | null = dataBasis?.operationalAgreementPct ?? null;
+  const modelAgreementSources: string =
+    Array.isArray(dataBasis?.consensusSources) && dataBasis.consensusSources.length > 0
+      ? dataBasis.consensusSources.join('  ·  ')
+      : 'No verified operational source returned data';
+
+  const extendedAgreementPct: number | null =
+    dataBasis?.ensembleAvailable && typeof dataBasis?.ensembleSpreadDegC === 'number'
+      ? Math.max(25, Math.min(98, Math.round(100 - dataBasis.ensembleSpreadDegC * 12)))
+      : null;
+  const extendedAgreementSources: string = dataBasis?.ensembleAvailable
+    ? `NOAA GEFS ${typeof dataBasis?.ensembleSpreadDegC === 'number' ? `(σ ${dataBasis.ensembleSpreadDegC}°C)` : ''}`.trim()
+    : 'Ensemble unavailable for this location';
+
+  const operationalAdvisoryActive = d1to5HeatwaveCount > 0;
+  const unavailableSourcesLabel: string[] = dataBasis?.unavailableSources ?? [];
 
   const formatDateShort = (dateStr?: string): string => {
     if (!dateStr) return '';
@@ -336,6 +359,27 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               <span className="text-[9px] text-slate-400 block -mt-0.5">Confidence</span>
             </div>
           </div>
+        </div>
+
+        {/* Evidence basis for this horizon — real data, never fabricated */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              horizon.evidenceBasis === 'OPERATIONAL_FORECAST' || horizon.evidenceBasis === 'ENSEMBLE'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                : horizon.evidenceBasis === 'CLIMATOLOGICAL'
+                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                : 'bg-slate-100 text-slate-600 border border-slate-200'
+            }`}
+          >
+            Evidence: {basisLabel[horizon.evidenceBasis] ?? 'No Verified Data'}
+          </span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+            Window: {horizon.targetWindow}
+          </span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+            Live forecast days: {horizon.liveForecastDays}
+          </span>
         </div>
 
         {/* Clean Metrics Grid: Arrival, Duration, Severity (No bulky description text) */}
@@ -463,9 +507,27 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                 isHeatwaveComing ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
               }`}
             >
-              {isHeatwaveComing ? 'Active Climatological Threat' : 'No Threat Detected'}
+              {isHeatwaveComing ? `Threat Basis: ${basisChipLabel}` : `No Threat · ${basisChipLabel}`}
             </span>
           </div>
+
+          {/* Evidence basis + real data provenance */}
+          {(unifiedVerdict?.confidenceBasis || unifiedVerdict?.disclaimer) && (
+            <div className="p-3 rounded-xl bg-white/70 border border-black/5 text-[11px] text-slate-700 space-y-1">
+              {unifiedVerdict?.confidenceBasis && (
+                <p>
+                  <strong className="text-slate-900">Why this number: </strong>
+                  {unifiedVerdict.confidenceBasis}
+                </p>
+              )}
+              {unifiedVerdict?.disclaimer && (
+                <p className="text-slate-500">
+                  <strong className="text-slate-700">Scope: </strong>
+                  {unifiedVerdict.disclaimer}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Main Verdict & The One Combined Number */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
@@ -490,7 +552,7 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                       isHeatwaveComing ? 'text-red-600' : 'text-emerald-700'
                     }`}
                   >
-                    {unifiedVerdict.verdict}
+                    {unifiedVerdict?.verdict ?? 'Loading Early Warning Data…'}
                   </h2>
                 </div>
               </div>
@@ -502,7 +564,7 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                     WHEN WILL IT COME?
                   </span>
                   <p className="text-sm font-black text-slate-900 mt-0.5">
-                    {unifiedVerdict.nextArrivalWindow}
+                    {unifiedVerdict?.nextArrivalWindow ?? 'UNAVAILABLE'}
                   </p>
                 </div>
 
@@ -511,7 +573,7 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                     EXPECTED DURATION
                   </span>
                   <p className="text-sm font-black text-slate-900 mt-0.5">
-                    {unifiedVerdict.expectedDuration}
+                    {unifiedVerdict?.expectedDuration ?? 'UNAVAILABLE'}
                   </p>
                 </div>
               </div>
@@ -548,20 +610,27 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               <div className="my-2.5 text-center">
                 <div className="flex items-baseline justify-center gap-0.5">
                   <span className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tight leading-none">
-                    {unifiedVerdict.unifiedConfidencePct}
+                    {unifiedVerdict?.unifiedConfidencePct ?? '—'}
                   </span>
                   <span className="text-2xl sm:text-3xl font-black text-orange-600">%</span>
                 </div>
 
-                <div className="mt-1">
+                <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
                   <span
                     className={`inline-block px-3 py-0.5 rounded-full text-xs font-bold ${
-                      unifiedVerdict.unifiedConfidencePct >= 90
+                      (unifiedVerdict?.unifiedConfidencePct ?? 0) >= 90
                         ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-blue-100 text-blue-800'
+                        : (unifiedVerdict?.unifiedConfidencePct ?? 0) >= 75
+                        ? 'bg-blue-100 text-blue-800'
+                        : (unifiedVerdict?.unifiedConfidencePct ?? 0) >= 55
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-slate-100 text-slate-700'
                     }`}
                   >
-                    Very High Agreement
+                    {unifiedVerdict ? `${unifiedVerdict.confidenceGrade} Confidence` : 'Awaiting verified data'}
+                  </span>
+                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                    {basisChipLabel}
                   </span>
                 </div>
               </div>
@@ -598,15 +667,21 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                 <span>1 to 5 Day Operational Heatwave Forecast</span>
               </h2>
               <p className="text-[11px] text-slate-500 font-medium">
-                High-resolution daily operational forecast for {activeLocation} with IMD thresholds & peak heat tracking
+                Live operational forecast for {activeLocation} — IMD-aligned thresholds with ward UHI offset (+{uhiOffsetC}°C)
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-xl text-xs font-extrabold bg-orange-100 text-orange-800 flex items-center gap-1.5 border border-orange-200">
-              <Flame className="w-3.5 h-3.5 text-orange-600" />
-              <span>Operational Advisory Active</span>
+            <span
+              className={`px-2.5 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 border ${
+                operationalAdvisoryActive
+                  ? 'bg-orange-100 text-orange-800 border-orange-200'
+                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              }`}
+            >
+              <Flame className={`w-3.5 h-3.5 ${operationalAdvisoryActive ? 'text-orange-600' : 'text-emerald-600'}`} />
+              <span>{operationalAdvisoryActive ? 'Operational Advisory Active' : 'No Operational Advisory'}</span>
             </span>
           </div>
         </div>
@@ -618,9 +693,13 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               Peak Window Temp
             </span>
             <span className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 block">
-              {formatTemp(d1to5Max)}
+              {d1to5Max !== null ? formatTemp(d1to5Max) : '—'}
             </span>
-            <span className="text-[10px] text-slate-500 font-medium">Highest diurnal maximum</span>
+            <span className="text-[10px] text-slate-500 font-medium">
+              {d1to5Max !== null
+                ? `Highest UHI-adjusted maximum · ${days1to5.length} of 5 days loaded`
+                : 'Live forecast unavailable'}
+            </span>
           </div>
 
           <div className="p-3 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
@@ -628,9 +707,11 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               Heatwave Days
             </span>
             <span className="text-xl sm:text-2xl font-black text-red-600 mt-0.5 block">
-              {d1to5HeatwaveCount} / 5 Days
+              {d1to5HeatwaveCount} / {days1to5.length || 0} Days
             </span>
-            <span className="text-[10px] text-slate-500 font-medium">Meeting IMD criteria</span>
+            <span className="text-[10px] text-slate-500 font-medium">
+              Meeting IMD criteria (≥{HEATWAVE_THRESHOLD_C}°C UHI-adjusted)
+            </span>
           </div>
 
           <div className="p-3 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
@@ -638,9 +719,9 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               Peak Thermal Window
             </span>
             <span className="text-sm sm:text-base font-black text-slate-900 mt-0.5 block">
-              12:30 PM – 4:30 PM
+              {peakThermalWindow}
             </span>
-            <span className="text-[10px] text-slate-500 font-medium">Maximum insolation & UHI</span>
+            <span className="text-[10px] text-slate-500 font-medium">Hottest hours from the live hourly record</span>
           </div>
 
           <div className="p-3 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
@@ -648,9 +729,14 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               Model Agreement
             </span>
             <span className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 block">
-              96%
+              {modelAgreementPct !== null ? `${modelAgreementPct}%` : '—'}
             </span>
-            <span className="text-[10px] text-slate-500 font-medium">IMD-MME & ECMWF IFS</span>
+            <span
+              className="text-[10px] text-slate-500 font-medium block truncate"
+              title={modelAgreementSources}
+            >
+              {modelAgreementSources}
+            </span>
           </div>
         </div>
 
@@ -658,8 +744,8 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {days1to5.map((day, idx) => {
             const isToday = idx === 0;
-            const isHeatwave = day.heatwaveStatus === 'Severe Heatwave' || day.heatwaveStatus === 'Heatwave' || day.tempMax >= 38.5;
-            const isSevere = day.heatwaveStatus === 'Severe Heatwave' || day.tempMax >= 40.0;
+            const isHeatwave = isHeatwaveDay(day);
+            const isSevere = isSevereDay(day);
 
             return (
               <div
@@ -720,9 +806,9 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                   <div className="my-2.5">
                     <div className="flex items-baseline gap-1">
                       <span className="text-3xl font-black text-slate-900 tracking-tight">
-                        {formatTemp(day.tempMax)}
+                        {formatTemp(adjustedMaxOf(day))}
                       </span>
-                      <span className="text-xs text-slate-400 font-bold">Max</span>
+                      <span className="text-xs text-slate-400 font-bold">Max (UHI-adj.)</span>
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-1">
                       <span>Min: <strong className="text-slate-700">{formatTemp(day.tempMin)}</strong></span>
@@ -769,15 +855,21 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                 <span>6 to 15 Days Extended Heatwave Outlook</span>
               </h2>
               <p className="text-[11px] text-slate-500 font-medium">
-                Medium-range sub-seasonal projection tracking the progression into the upcoming heatwave episode
+                Extended-range projection from the live {full16DayList.length}-day forecast, tracking threshold arrival beyond day 5
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-xl text-xs font-extrabold bg-blue-50 text-blue-800 flex items-center gap-1.5 border border-blue-200">
-              <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
-              <span>Trajectory: Escalating Heat Risk</span>
+            <span
+              className={`px-2.5 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 border ${
+                extendedTrajectory.startsWith('Escalating')
+                  ? 'bg-orange-50 text-orange-800 border-orange-200'
+                  : 'bg-blue-50 text-blue-800 border-blue-200'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Trajectory: {extendedTrajectory}</span>
             </span>
           </div>
         </div>
@@ -789,9 +881,13 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               Onset / Surge Window
             </span>
             <span className="text-sm sm:text-base font-black text-slate-900 mt-0.5 block">
-              Days 12 – 15
+              {onsetSurgeLabel}
             </span>
-            <span className="text-[10px] text-slate-500 font-medium">Critical heatwave threshold arrival</span>
+            <span className="text-[10px] text-slate-500 font-medium">
+              {onsetSurgeLabel.startsWith('Days')
+                ? 'Heatwave threshold arrival window'
+                : 'No threshold arrival in this window'}
+            </span>
           </div>
 
           <div className="p-3 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
@@ -799,9 +895,11 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               Projected Peak Max
             </span>
             <span className="text-xl sm:text-2xl font-black text-red-600 mt-0.5 block">
-              {formatTemp(d6to15Max)}
+              {d6to15Max !== null ? formatTemp(d6to15Max) : '—'}
             </span>
-            <span className="text-[10px] text-slate-500 font-medium">Peak daytime maximum</span>
+            <span className="text-[10px] text-slate-500 font-medium">
+              Highest UHI-adjusted maximum · {days6to15.length} of 10 days loaded
+            </span>
           </div>
 
           <div className="p-3 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
@@ -809,9 +907,9 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               Heatwave Days
             </span>
             <span className="text-xl sm:text-2xl font-black text-orange-600 mt-0.5 block">
-              {d6to15HeatwaveCount} / 10 Days
+              {d6to15HeatwaveCount} / {days6to15.length || 0} Days
             </span>
-            <span className="text-[10px] text-slate-500 font-medium">Expected above threshold</span>
+            <span className="text-[10px] text-slate-500 font-medium">Above threshold in live forecast</span>
           </div>
 
           <div className="p-3 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
@@ -819,9 +917,14 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               Sub-Seasonal Agreement
             </span>
             <span className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 block">
-              93%
+              {extendedAgreementPct !== null ? `${extendedAgreementPct}%` : '—'}
             </span>
-            <span className="text-[10px] text-slate-500 font-medium">NOAA GEFS & ECMWF SEAS</span>
+            <span
+              className="text-[10px] text-slate-500 font-medium block truncate"
+              title={extendedAgreementSources}
+            >
+              {extendedAgreementSources}
+            </span>
           </div>
         </div>
 
@@ -829,8 +932,8 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {days6to15.map((day, idx) => {
             const dayNumber = idx + 6;
-            const isHeatwave = day.heatwaveStatus === 'Severe Heatwave' || day.heatwaveStatus === 'Heatwave' || day.tempMax >= 38.5;
-            const isSevere = day.heatwaveStatus === 'Severe Heatwave' || day.tempMax >= 40.0;
+            const isHeatwave = isHeatwaveDay(day);
+            const isSevere = isSevereDay(day);
 
             return (
               <div
@@ -889,9 +992,9 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                   <div className="my-2">
                     <div className="flex items-baseline gap-1">
                       <span className="text-2xl font-black text-slate-900 tracking-tight">
-                        {formatTemp(day.tempMax)}
+                        {formatTemp(adjustedMaxOf(day))}
                       </span>
-                      <span className="text-[10px] text-slate-400 font-bold">Max</span>
+                      <span className="text-[10px] text-slate-400 font-bold">Max (UHI-adj.)</span>
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5 flex items-center justify-between">
                       <span>Min: {formatTemp(day.tempMin)}</span>
@@ -913,54 +1016,140 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
 
       {/* 5. MODAL: MAIN RESOURCES & CONFIDENCE BREAKDOWN */}
       {isMainResourcesModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-orange-600" />
-                <h3 className="font-black text-slate-900 text-base">
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsMainResourcesModalOpen(false);
+          }}
+        >
+          <div className="bg-white rounded-3xl max-w-lg w-full my-auto max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
+            {/* Always-visible header — the close control can never scroll out of reach */}
+            <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Layers className="w-5 h-5 text-orange-600 shrink-0" />
+                <h3 className="font-black text-slate-900 text-base truncate">
                   Climatological Resources & Confidence
                 </h3>
               </div>
               <button
                 onClick={() => setIsMainResourcesModalOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                aria-label="Close"
+                className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 text-xs font-bold transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline">Close</span>
               </button>
             </div>
 
+            {/* Scrollable body */}
+            <div className="p-4 sm:p-5 overflow-y-auto grow space-y-4">
+
             <p className="text-xs text-slate-600">
-              The <strong>{unifiedVerdict.unifiedConfidencePct}%</strong> combined confidence is computed through Bayesian skill-weighting across 4 independent global meteorological resources:
+              The <strong>{unifiedVerdict?.unifiedConfidencePct ?? '—'}%</strong> combined number is derived from{' '}
+              <strong>{basisChipLabel}</strong> evidence only. Every value below comes from a provider response for this
+              location — nothing is simulated.
             </p>
 
-            {/* Resources List */}
+            {unifiedVerdict?.primaryGuidance && (
+              <p className="text-[11px] text-slate-600 p-2.5 rounded-xl bg-blue-50/60 border border-blue-100">
+                {unifiedVerdict.primaryGuidance}
+              </p>
+            )}
+
+            {/* Resources List — only real providers that returned data appear here */}
             <div className="space-y-2.5 text-xs">
-              {unifiedVerdict.contributingModels?.map((model) => (
+              {(unifiedVerdict?.contributingModels ?? []).length === 0 && (
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-slate-600">
+                  No verified provider returned data for this location, so no confidence can be computed.
+                </div>
+              )}
+              {(unifiedVerdict?.contributingModels ?? []).map((model) => (
                 <div
                   key={model.name}
-                  className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between"
+                  className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3"
                 >
-                  <div>
-                    <span className="font-extrabold text-slate-900 block">{model.name}</span>
-                    <span className="text-[11px] text-slate-500">{model.weightPct}% Ensemble Weight</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-black text-slate-900 text-sm">{model.confidence}%</span>
-                    <span className="text-[10px] text-orange-600 font-bold block">
-                      +{model.contributionScore}% Pts
+                  <div className="min-w-0">
+                    <span className="font-extrabold text-slate-900 block truncate">{model.name}</span>
+                    <span className="text-[11px] text-slate-500">
+                      {model.weightPct > 0 ? `${model.weightPct}% consensus weight` : 'Reference (no weight)'}
+                      {model.dataType ? ` · ${model.dataType}` : ''}
+                      {model.availability ? ` · ${model.availability}` : ''}
                     </span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="font-black text-slate-900 text-sm">{model.confidence}%</span>
+                    {model.weightPct > 0 && (
+                      <span className="text-[10px] text-orange-600 font-bold block">
+                        +{model.contributionScore}% pts
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="p-3 rounded-xl bg-orange-50 border border-orange-100 text-[11px] text-orange-950 space-y-1">
-              <span className="font-bold block">Consensus Calculation:</span>
-              <p className="font-mono text-[10px]">
-                (IMD 98% × 0.35) + (ECMWF 96% × 0.30) + (NOAA 92% × 0.20) + (GFS 94% × 0.15) = <strong>96% Unified Score</strong>
-              </p>
+            <div className="p-3 rounded-xl bg-orange-50 border border-orange-100 text-[11px] text-orange-950 space-y-1.5">
+              <span className="font-bold block">How the number was produced:</span>
+              {unifiedVerdict?.confidenceBasis && <p className="leading-relaxed">{unifiedVerdict.confidenceBasis}</p>}
+              {unifiedVerdict?.methodology && (
+                <p className="font-mono text-[10px] leading-relaxed">{unifiedVerdict.methodology}</p>
+              )}
+              {(unifiedVerdict?.contributingModels ?? []).some((m) => m.weightPct > 0) && (
+                <p className="font-mono text-[10px]">
+                  {(unifiedVerdict?.contributingModels ?? [])
+                    .filter((m) => m.weightPct > 0)
+                    .map((m) => `(${m.name} ${m.confidence}% × ${(m.weightPct / 100).toFixed(2)})`)
+                    .join(' + ')}{' '}
+                  = <strong>{unifiedVerdict?.unifiedConfidencePct ?? 0}% Combined Score</strong>
+                </p>
+              )}
             </div>
+
+            {/* Real 20-year climatology for this grid cell */}
+            {climatologySummary && (
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-700 space-y-1.5">
+                <span className="font-bold text-slate-900 block">
+                  Real Climatological Baseline ({climatologySummary.available ? 'available' : 'unavailable'})
+                </span>
+                <p className="text-slate-500">
+                  {climatologySummary.source} · {climatologySummary.referencePeriod}
+                </p>
+                {climatologySummary.available && (
+                  <>
+                    <p>
+                      Warmest month: <strong>{climatologySummary.annualPeakMonth}</strong>{' '}
+                      {climatologySummary.annualPeakNormalMaxC !== null
+                        ? `(${climatologySummary.annualPeakNormalMaxC}°C 20-year normal daily max)`
+                        : ''}
+                    </p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 pt-1">
+                      {(climatologySummary.monthlyNormals ?? []).map((m: any) => (
+                        <div key={m.monthKey} className="p-1.5 rounded-lg bg-white border border-slate-100 text-center">
+                          <span className="block text-[10px] font-bold text-slate-500">{m.monthLabel.slice(0, 3)}</span>
+                          <span className="block text-[11px] font-black text-slate-800">
+                            {m.normalMaxTempC !== null ? `${m.normalMaxTempC}°C` : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Providers that are genuinely unavailable — reported honestly, never substituted */}
+            {unavailableSourcesLabel.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-[11px] text-amber-900 space-y-1">
+                <span className="font-bold block">Unavailable sources (not used, never simulated):</span>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {unavailableSourcesLabel.map((src) => (
+                    <li key={src} className="font-mono text-[10px]">
+                      {src}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="pt-2 flex justify-end">
               <button
@@ -969,6 +1158,7 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               >
                 Close
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -976,72 +1166,100 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
 
       {/* 6. MODAL: SPECIFIC SECTOR RESOURCES & CONFIDENCE */}
       {activeSectorResources && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setActiveSectorResources(null);
+          }}
+        >
+          <div className="bg-white rounded-3xl max-w-lg w-full my-auto max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
+            {/* Always-visible header — the close control can never scroll out of reach */}
+            <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-100 shrink-0">
+              <div className="min-w-0">
                 <span className="text-[10px] font-extrabold uppercase text-orange-600 tracking-wider">
                   {activeSectorResources.timeRangeLabel} Sector
                 </span>
-                <h3 className="font-black text-slate-900 text-base">
+                <h3 className="font-black text-slate-900 text-base truncate">
                   Resources & Individual Model Confidences
                 </h3>
               </div>
               <button
                 onClick={() => setActiveSectorResources(null)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                aria-label="Close"
+                className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 text-xs font-bold transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline">Close</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="font-extrabold text-slate-900 block">IMD (India)</span>
-                <span className="text-emerald-600 font-black text-sm">
-                  {activeSectorResources.models.imd.confidencePct}% Confidence
-                </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Anomaly: +{activeSectorResources.models.imd.anomalyDegC}°C
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="font-extrabold text-slate-900 block">ECMWF (Europe)</span>
-                <span className="text-blue-600 font-black text-sm">
-                  {activeSectorResources.models.ecmwf.confidencePct}% Confidence
-                </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Anomaly: +{activeSectorResources.models.ecmwf.anomalyDegC}°C
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="font-extrabold text-slate-900 block">NOAA (USA)</span>
-                <span className="text-orange-600 font-black text-sm">
-                  {activeSectorResources.models.noaa.confidencePct}% Confidence
-                </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Anomaly: +{activeSectorResources.models.noaa.anomalyDegC}°C
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="font-extrabold text-slate-900 block">GFS (NCEP)</span>
-                <span className="text-purple-600 font-black text-sm">
-                  {activeSectorResources.models.gfs.confidencePct}% Confidence
-                </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Anomaly: +{activeSectorResources.models.gfs.anomalyDegC}°C
-                </span>
-              </div>
+            {/* Scrollable body */}
+            <div className="p-4 sm:p-5 overflow-y-auto grow space-y-4">
+            <div className="space-y-2 text-xs">
+              {(activeSectorResources.models ?? []).length === 0 && (
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-slate-600">
+                  No verified evidence rows are available for this horizon.
+                </div>
+              )}
+              {(activeSectorResources.models ?? []).map((model, idx) => (
+                <div key={`${model.modelName}-${idx}`} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-extrabold text-slate-900 block truncate">{model.modelName}</span>
+                      <span className="text-[10px] text-slate-500 block truncate">{model.fullName}</span>
+                    </div>
+                    <span
+                      className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        model.availability === 'LIVE' || model.availability === 'VERIFIED'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : model.availability === 'DEGRADED' || model.availability === 'PARTIAL'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {model.availability ?? 'UNKNOWN'}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                    <div className="p-1.5 rounded-lg bg-white border border-slate-100">
+                      <span className="text-[10px] text-slate-500 block">Confidence</span>
+                      <span className="font-black text-sm text-slate-900">
+                        {model.confidencePct !== null && model.confidencePct !== undefined
+                          ? `${model.confidencePct}%`
+                          : 'reference'}
+                      </span>
+                    </div>
+                    <div className="p-1.5 rounded-lg bg-white border border-slate-100">
+                      <span className="text-[10px] text-slate-500 block">Value / anomaly</span>
+                      <span className="font-black text-sm text-slate-900">
+                        {model.observedValueC !== null && model.observedValueC !== undefined
+                          ? `${model.observedValueC}°C`
+                          : model.anomalyDegC !== null && model.anomalyDegC !== undefined
+                          ? `${model.anomalyDegC > 0 ? '+' : ''}${model.anomalyDegC}°C`
+                          : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed">{model.prediction}</p>
+                  {model.notes && <p className="mt-1 text-[10px] text-slate-400 leading-relaxed">{model.notes}</p>}
+                  <span className="mt-1 inline-block text-[9px] font-bold uppercase text-slate-400">
+                    {model.dataType}
+                  </span>
+                </div>
+              ))}
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-100 text-xs flex items-center justify-between">
-              <span className="font-bold text-slate-700">Combined Unified Score:</span>
-              <span className="font-black text-slate-900 text-sm">
-                {activeSectorResources.unifiedConfidencePct}% Agreement
-              </span>
+            <div className="p-3 rounded-xl bg-slate-100 text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-700">Combined score for this horizon:</span>
+                <span className="font-black text-slate-900 text-sm">
+                  {activeSectorResources.unifiedConfidencePct}%
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-600 leading-relaxed">{activeSectorResources.confidenceBasis}</p>
+              {activeSectorResources.disclaimer && (
+                <p className="text-[10px] text-slate-500 leading-relaxed">{activeSectorResources.disclaimer}</p>
+              )}
             </div>
 
             <div className="pt-2 flex justify-end">
@@ -1052,36 +1270,51 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
                 Close
               </button>
             </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* 7. MODAL: IMPORTANT ACTION & PROTECTION FOR THIS PERIOD OF MONTHS */}
       {activeSectorAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase text-orange-600 tracking-wider">
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setActiveSectorAction(null);
+          }}
+        >
+          <div className="bg-white rounded-3xl max-w-lg w-full my-auto max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
+            {/* Always-visible header — the close control can never scroll out of reach */}
+            <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-100 shrink-0">
+              <div className="min-w-0">
+                <span className="text-[10px] font-extrabold uppercase text-orange-600 tracking-wider block truncate">
                   {activeSectorAction.timeRangeLabel} ({activeSectorAction.targetWindow})
                 </span>
-                <h3 className="font-black text-slate-900 text-base">
+                <h3 className="font-black text-slate-900 text-base truncate">
                   Heatwave Condition & Important Actions
                 </h3>
               </div>
               <button
                 onClick={() => setActiveSectorAction(null)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                aria-label="Close"
+                className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 text-xs font-bold transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline">Close</span>
               </button>
             </div>
+
+            {/* Scrollable body */}
+            <div className="p-4 sm:p-5 overflow-y-auto grow space-y-4">
 
             {/* Heatwave Condition Box */}
             <div className="p-3.5 rounded-2xl bg-orange-50/80 border border-orange-200/80 text-xs space-y-2">
               <span className="font-bold text-orange-950 uppercase text-[10px] tracking-wider block">
                 Heatwave Condition for this Period:
               </span>
+              {activeSectorAction.statusHeadline && (
+                <p className="text-[11px] text-orange-900 leading-relaxed">{activeSectorAction.statusHeadline}</p>
+              )}
               <div className="grid grid-cols-2 gap-2 text-slate-800">
                 <div>
                   <span className="text-[10px] text-slate-500 block">Status:</span>
@@ -1125,6 +1358,7 @@ export const EarlyWarningHeatwavePage: React.FC = () => {
               >
                 Close
               </button>
+            </div>
             </div>
           </div>
         </div>

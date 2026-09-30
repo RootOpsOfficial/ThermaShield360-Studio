@@ -66,20 +66,24 @@ export interface ProvenanceLedgerState {
 
 let activeLedger: ProvenanceLedgerState | null = null;
 let lastIngestTime = 0;
+let lastIngestKey = '';
 const LEDGER_TTL_MS = 60 * 1000; // 60 seconds cache
 
 export function clearProvenanceCache(): void {
   activeLedger = null;
   lastIngestTime = 0;
+  lastIngestKey = '';
 }
 
 export async function ingestAndAuditAllSources(
-  lat: number = 18.5204,
-  lng: number = 73.8567,
+  lat: number,
+  lng: number,
   forceRefresh = false
 ): Promise<ProvenanceLedgerState> {
+  // Location-keyed cache — changing location always invalidates
+  const locationKey = `${lat.toFixed(4)}:${lng.toFixed(4)}`;
   const now = Date.now();
-  if (!forceRefresh && activeLedger && now - lastIngestTime < LEDGER_TTL_MS) {
+  if (!forceRefresh && activeLedger && now - lastIngestTime < LEDGER_TTL_MS && lastIngestKey === locationKey) {
     return activeLedger;
   }
 
@@ -220,6 +224,7 @@ export async function ingestAndAuditAllSources(
     auditResults,
   };
   lastIngestTime = now;
+  lastIngestKey = locationKey;
 
   return activeLedger;
 }

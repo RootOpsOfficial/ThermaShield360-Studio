@@ -79,9 +79,9 @@ export interface MultiHorizonLadderReport {
 }
 
 export function generateMultiHorizonLadder(
-  location: string = 'Pune, Maharashtra',
-  lat: number = 18.5204,
-  lng: number = 73.8567,
+  location: string,
+  lat: number,
+  lng: number,
   fusedConsensus?: FusedConsensusMeteorology
 ): MultiHorizonLadderReport {
   const currentTemp = fusedConsensus?.fusedTemperatureC ?? null;

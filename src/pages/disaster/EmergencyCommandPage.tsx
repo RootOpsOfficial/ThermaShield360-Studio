@@ -774,8 +774,8 @@ export const EmergencyCommandPage: React.FC = () => {
       {/* ============================================================ */}
       <div className="pt-2">
         <SourceDataTable
-          lat={selectedRegion?.center?.lat ?? 18.5204}
-          lng={selectedRegion?.center?.lng ?? 73.8567}
+          lat={selectedRegion?.center?.lat}
+          lng={selectedRegion?.center?.lng}
           title="Disaster Management Early Warning Provenance"
           subtitle="Traceable multi-model NWP & satellite feeds backing regional heat crisis response missions"
           onOpenValidationCenter={() => setShowValidationCenter(true)}
@@ -792,7 +792,7 @@ export const EmergencyCommandPage: React.FC = () => {
       )}
 
       {showValidationCenter && (
-        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} lat={selectedRegion?.center?.lat} lng={selectedRegion?.center?.lng} locationName={selectedRegion?.name} />
       )}
     </div>
   );

@@ -21,8 +21,8 @@ interface LocalHeatRiskMapProps {
 }
 
 export const LocalHeatRiskMap: React.FC<LocalHeatRiskMapProps> = ({
-  initialLat = 18.5204,
-  initialLon = 73.8567,
+  initialLat,
+  initialLon,
   onSelectWardId,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -30,10 +30,10 @@ export const LocalHeatRiskMap: React.FC<LocalHeatRiskMapProps> = ({
   const geoJsonLayerRef = useRef<L.GeoJSON | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
 
-  // Coordinates state (starts with provided or Pune defaults)
+  // Coordinates state (starts with provided location)
   const [coords, setCoords] = useState<{ lat: number; lon: number }>({
-    lat: initialLat,
-    lon: initialLon,
+    lat: initialLat ?? 0,
+    lon: initialLon ?? 0,
   });
 
   const [mapData, setMapData] = useState<LocalRiskMapResponse | null>(null);

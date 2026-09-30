@@ -24,13 +24,32 @@ interface SidebarItem {
 }
 
 export const CitizenSidebar: React.FC = () => {
-  const { activePage, setActivePage } = useCitizen();
+  const { activePage, setActivePage, location, longRangeReport } = useCitizen();
   const [showValidationCenter, setShowValidationCenter] = useState(false);
+
+  // Real confidence from the live early-warning report — no hardcoded badge value.
+  const heatwaveConfidencePct = longRangeReport?.unifiedVerdict?.unifiedConfidencePct;
+
+  // Real, per-location source availability derived from the live evidence ledger.
+  const dataBasis = longRangeReport?.dataBasis;
+  const liveSources = Array.from(
+    new Set([
+      ...(dataBasis?.consensusSources ?? []),
+      ...(dataBasis?.ensembleAvailable ? ['NOAA GEFS'] : []),
+      ...(dataBasis?.climatologyAvailable ? [dataBasis?.climatologySource ?? 'NASA POWER'] : []),
+    ])
+  );
+  const unavailableSources = dataBasis?.unavailableSources ?? [];
 
   const items: SidebarItem[] = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'risk', label: 'My Heat Risk', icon: Flame },
-    { id: 'future', label: 'Early Warning & Heatwave Forecast', icon: CalendarRange, badge: '96%' },
+    {
+      id: 'future',
+      label: 'Early Warning & Heatwave Forecast',
+      icon: CalendarRange,
+      badge: heatwaveConfidencePct !== undefined ? `${heatwaveConfidencePct}%` : undefined,
+    },
     { id: 'thermal', label: 'Thermal Stress', icon: ThermometerSun },
     { id: 'map', label: 'Heat Risk Map', icon: Map },
     { id: 'healthcare', label: 'Nearby Healthcare', icon: Cross },
@@ -87,13 +106,20 @@ export const CitizenSidebar: React.FC = () => {
           <div className="flex items-center justify-between text-slate-800 font-bold mb-1">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span className="text-[11px]">11 Sources Verified</span>
+              <span className="text-[11px]">
+                {liveSources.length > 0 ? `${liveSources.length} Sources Verified` : 'Verifying sources…'}
+              </span>
             </div>
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
           </div>
           <p className="text-[10px] text-slate-500 leading-snug">
-            ECMWF, NOAA, Open-Meteo, IMD, ERA5 & NASA active.
+            {liveSources.length > 0 ? `${liveSources.join(', ')} active for this location.` : 'Awaiting verified provider responses.'}
           </p>
+          {unavailableSources.length > 0 && (
+            <p className="text-[10px] text-amber-700 leading-snug mt-1">
+              Unavailable: {unavailableSources.map((s) => s.split(' — ')[0]).join(', ')}.
+            </p>
+          )}
         </button>
 
         {/* Bottom Safety Tip Mini Card */}
@@ -136,7 +162,7 @@ export const CitizenSidebar: React.FC = () => {
       </div>
 
       {showValidationCenter && (
-        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} />
+        <DataValidationCenter isModal onClose={() => setShowValidationCenter(false)} lat={location.lat} lng={location.lng} locationName={location.ward?.name} />
       )}
     </>
   );

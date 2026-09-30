@@ -89,16 +89,36 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Helper to parse query coords with Pune fallback
+// Helper to parse query coords — NO silent Pune fallback
+// If lat/lng are missing or invalid, returns null so the caller can handle it appropriately
 function parseCoords(req: Request): { lat: number; lng: number } {
   const latStr = req.query.lat as string;
   const lngStr = req.query.lng as string;
   let lat = parseFloat(latStr);
   let lng = parseFloat(lngStr);
-  if (isNaN(lat) || isNaN(lng) || lat < 5 || lat > 35 || lng < 60 || lng > 95) {
-    // Default to Pune Shivajinagar
-    lat = 18.5314;
-    lng = 73.8446;
+  if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    // Log warning but do NOT silently default to Pune
+    console.warn(`[ThermaShield] parseCoords: Invalid/missing coordinates (lat=${latStr}, lng=${lngStr}). Using request origin or first available location.`);
+    // Return a clearly invalid sentinel that forces the caller to provide real coords
+    // For backward compat, still return numbers — but from query if partially available
+    lat = NaN;
+    lng = NaN;
+  }
+  // If still NaN after parsing, try to extract from body or other query params
+  if (isNaN(lat) || isNaN(lng)) {
+    const bodyLat = (req as any).body?.lat;
+    const bodyLng = (req as any).body?.lng;
+    if (bodyLat !== undefined && bodyLng !== undefined) {
+      lat = parseFloat(bodyLat);
+      lng = parseFloat(bodyLng);
+    }
+  }
+  // Final validation — if still invalid, return a default that is clearly NOT Pune
+  // This ensures no API silently uses Pune data for another city
+  if (isNaN(lat) || isNaN(lng)) {
+    console.warn('[ThermaShield] parseCoords: No valid coordinates provided. Defaulting to 0,0 (will show UNAVAILABLE).');
+    lat = 0;
+    lng = 0;
   }
   return { lat, lng };
 }
@@ -558,12 +578,13 @@ app.get('/api/citizen/heat-risk', async (req: Request, res: Response) => {
 // Real interactive, GPS-based heat-risk map with GeoJSON polygons
 app.get('/api/citizen/local-risk-map', async (req: Request, res: Response) => {
   try {
-    const lat = parseFloat(
-      (req.query.lat as string) || (req.query.latitude as string) || '18.5204'
-    );
-    const lon = parseFloat(
-      (req.query.lon as string) || (req.query.lng as string) || (req.query.longitude as string) || '73.8567'
-    );
+    const latRaw = (req.query.lat as string) || (req.query.latitude as string);
+    const lonRaw = (req.query.lon as string) || (req.query.lng as string) || (req.query.longitude as string);
+    const lat = parseFloat(latRaw);
+    const lon = parseFloat(lonRaw);
+    if (isNaN(lat) || isNaN(lon)) {
+      return res.status(400).json({ error: 'Missing required lat/lng coordinates. No default location assumed.' });
+    }
 
     const { ward: currentWard, city, state } = await resolveLocationOrWard(req, lat, lon);
     const weather = await fetchWeatherData(lat, lon);
@@ -1313,8 +1334,23 @@ app.get('/api/risk/long-range-warning', async (req: Request, res: Response) => {
   const { ward } = await resolveLocationOrWard(req, lat, lng);
   const locationParam = req.query.location as string;
   const targetLocation = locationParam && locationParam.trim() ? locationParam.trim() : ward.name;
-  const report = generateLongRangeEarlyWarning(targetLocation);
-  res.json(report);
+  try {
+    const report = await generateLongRangeEarlyWarning(targetLocation, {
+      lat,
+      lng,
+      ward: {
+        uhiOffsetDegC: ward.uhiOffsetDegC,
+        city: ward.city,
+        state: ward.state,
+        zone: ward.zone,
+        vulnerabilityIndex: ward.vulnerabilityIndex,
+      },
+    });
+    res.json(report);
+  } catch (err: any) {
+    console.error('[ThermaShield] /api/risk/long-range-warning failed:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Failed to generate early warning report' });
+  }
 });
 
 // 9. GET /api/heatwave/status
@@ -1562,12 +1598,12 @@ app.get('/api/healthcare/location-heat-check', async (req: Request, res: Respons
       }
     }
 
-    // Default fallback if still unresolved
+    // Default fallback if still unresolved — return error, DO NOT default to Pune
     if (isNaN(lat) || isNaN(lng) || lat < 1 || lat > 85 || lng < -180 || lng > 180) {
-      lat = 18.5204;
-      lng = 73.8567;
-      resolvedName = 'Pune Municipal Area, Maharashtra';
-      shortName = 'Pune';
+      return res.status(400).json({
+        error: 'Unable to resolve location. Please provide valid latitude/longitude or a recognized location name.',
+        location: null,
+      });
     } else if (!resolvedName) {
       resolvedName = `Location (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`;
       shortName = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
@@ -1713,19 +1749,23 @@ app.post('/api/routes', async (req: Request, res: Response) => {
     const originParam = req.body?.start || req.body?.origin || {};
     const destParam = req.body?.destination || {};
 
-    const originLat = originParam.lat !== undefined ? Number(originParam.lat) : (req.body?.startLat !== undefined ? Number(req.body.startLat) : 18.5314);
+    const originLat = originParam.lat !== undefined ? Number(originParam.lat) : (req.body?.startLat !== undefined ? Number(req.body.startLat) : NaN);
     const originLng = originParam.lng !== undefined
       ? Number(originParam.lng)
       : (originParam.lon !== undefined
       ? Number(originParam.lon)
-      : (req.body?.startLng !== undefined ? Number(req.body.startLng) : 73.8446));
+      : (req.body?.startLng !== undefined ? Number(req.body.startLng) : NaN));
 
-    const destLat = destParam.lat !== undefined ? Number(destParam.lat) : (req.body?.destLat !== undefined ? Number(req.body.destLat) : 18.5134);
+    const destLat = destParam.lat !== undefined ? Number(destParam.lat) : (req.body?.destLat !== undefined ? Number(req.body.destLat) : NaN);
     const destLng = destParam.lng !== undefined
       ? Number(destParam.lng)
       : (destParam.lon !== undefined
       ? Number(destParam.lon)
-      : (req.body?.destLng !== undefined ? Number(req.body.destLng) : 73.8561));
+      : (req.body?.destLng !== undefined ? Number(req.body.destLng) : NaN));
+
+    if (isNaN(originLat) || isNaN(originLng) || isNaN(destLat) || isNaN(destLng)) {
+      return res.status(400).json({ error: 'Missing required origin and destination coordinates.' });
+    }
 
     const originLabel = originParam.label || req.body?.startLabel || 'Current GPS';
     const destLabel = destParam.label || req.body?.destLabel || 'Destination';
@@ -2104,12 +2144,13 @@ app.get('/api/municipal/risk', async (req: Request, res: Response) => {
 app.get('/api/weather/observations', async (req: Request, res: Response) => {
   try {
     const locationKey = req.query.locationKey as string | undefined;
+    const { lat, lng } = parseCoords(req);
     let observations = await getWeatherObservations(locationKey);
-    if (!observations || observations.length === 0) {
-      await fetchWeatherData(18.5204, 73.8567);
+    if ((!observations || observations.length === 0) && lat !== 0 && lng !== 0) {
+      await fetchWeatherData(lat, lng);
       observations = await getWeatherObservations(locationKey);
     }
-    res.json(observations);
+    res.json(observations || []);
   } catch (err: any) {
     console.error('Error in /api/weather/observations:', err);
     res.status(500).json({ error: err?.message || 'Failed to fetch weather observations' });
@@ -2120,12 +2161,13 @@ app.get('/api/weather/observations', async (req: Request, res: Response) => {
 app.get('/api/weather/forecasts', async (req: Request, res: Response) => {
   try {
     const locationKey = req.query.locationKey as string | undefined;
+    const { lat, lng } = parseCoords(req);
     let forecasts = await getWeatherForecasts(locationKey);
-    if (!forecasts || forecasts.length === 0) {
-      await fetchWeatherData(18.5204, 73.8567);
+    if ((!forecasts || forecasts.length === 0) && lat !== 0 && lng !== 0) {
+      await fetchWeatherData(lat, lng);
       forecasts = await getWeatherForecasts(locationKey);
     }
-    res.json(forecasts);
+    res.json(forecasts || []);
   } catch (err: any) {
     console.error('Error in /api/weather/forecasts:', err);
     res.status(500).json({ error: err?.message || 'Failed to fetch weather forecasts' });
@@ -2473,7 +2515,7 @@ app.get('/api/data/provenance', async (req: Request, res: Response) => {
 app.get('/api/data/ladder', async (req: Request, res: Response) => {
   try {
     const { lat, lng } = parseCoords(req);
-    const locationName = (req.query.location as string) || 'Pune, Maharashtra';
+    const locationName = (req.query.location as string) || `Location (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`;
     const ledger = await ingestAndAuditAllSources(lat, lng, false);
     const fusion = fuseMultiSourceRecords(ledger.records);
     const ladder = generateMultiHorizonLadder(locationName, lat, lng, fusion);

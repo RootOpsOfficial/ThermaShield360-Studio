@@ -27,11 +27,17 @@ import { ingestAndAuditAllSources } from '../../services/validation/provenanceLe
 interface DataValidationCenterProps {
   onClose?: () => void;
   isModal?: boolean;
+  lat?: number;
+  lng?: number;
+  locationName?: string;
 }
 
 export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
   onClose,
   isModal = false,
+  lat: propLat,
+  lng: propLng,
+  locationName: propLocationName,
 }) => {
   const [providers, setProviders] = useState<ProviderHealthReport[]>([]);
   const [isLoadingHealth, setIsLoadingHealth] = useState(true);
@@ -39,37 +45,52 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
   const [ladder, setLadder] = useState<MultiHorizonLadderReport | null>(null);
   const [activeTab, setActiveTab] = useState<'providers' | 'provenance' | 'ladder' | 'fusion'>('providers');
 
+  // Escape closes the modal — a guaranteed keyboard way back.
+  useEffect(() => {
+    if (!isModal || !onClose) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isModal, onClose]);
+
+  // Use provided lat/lng — never hardcode Pune
+  const activeLat = propLat ?? 0;
+  const activeLng = propLng ?? 0;
+  const activeLocationName = propLocationName || `Location (${activeLat.toFixed(4)}°N, ${activeLng.toFixed(4)}°E)`;
+
   const fetchHealthAndFusion = async (force = false) => {
     setIsLoadingHealth(true);
     try {
-      // 1. Fetch provider health from server
-      const healthRes = await fetch(`/api/data/health${force ? '?refresh=true' : ''}`);
+      // 1. Fetch provider health from server using selected location
+      const healthRes = await fetch(`/api/data/health?lat=${activeLat}&lng=${activeLng}${force ? '&refresh=true' : ''}`);
       if (healthRes.ok) {
         const health = await healthRes.json();
         setProviders(health);
       } else {
-        const health = await checkAllProvidersHealth(18.5204, 73.8567, force);
+        const health = await checkAllProvidersHealth(activeLat, activeLng, force);
         setProviders(health);
       }
 
-      // 2. Fetch multi-source fusion consensus from server
-      const fusionRes = await fetch(`/api/data/fusion${force ? '?refresh=true' : ''}`);
+      // 2. Fetch multi-source fusion consensus from server using selected location
+      const fusionRes = await fetch(`/api/data/fusion?lat=${activeLat}&lng=${activeLng}${force ? '&refresh=true' : ''}`);
       if (fusionRes.ok) {
         const fused = await fusionRes.json();
         setFusionData(fused);
       } else {
-        const ledger = await ingestAndAuditAllSources(18.5204, 73.8567, force);
+        const ledger = await ingestAndAuditAllSources(activeLat, activeLng, force);
         const fused = fuseMultiSourceRecords(ledger.records);
         setFusionData(fused);
       }
 
-      // 3. Fetch multi-horizon early warning ladder from server
-      const ladderRes = await fetch(`/api/data/ladder`);
+      // 3. Fetch multi-horizon early warning ladder from server using selected location
+      const ladderRes = await fetch(`/api/data/ladder?lat=${activeLat}&lng=${activeLng}&location=${encodeURIComponent(activeLocationName)}`);
       if (ladderRes.ok) {
         const ladderData = await ladderRes.json();
         setLadder(ladderData);
       } else {
-        const ladderData = generateMultiHorizonLadder('Pune, Maharashtra', 18.5204, 73.8567);
+        const ladderData = generateMultiHorizonLadder(activeLocationName, activeLat, activeLng);
         setLadder(ladderData);
       }
     } catch (err) {
@@ -80,8 +101,10 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
   };
 
   useEffect(() => {
-    fetchHealthAndFusion();
-  }, []);
+    if (activeLat !== 0 || activeLng !== 0) {
+      fetchHealthAndFusion();
+    }
+  }, [activeLat, activeLng]);
 
   const getStatusBadge = (status: ProviderHealthReport['status']) => {
     switch (status) {
@@ -298,7 +321,7 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
       {/* TAB 2: PROVENANCE TABLE */}
       {activeTab === 'provenance' && (
         <div className="space-y-4">
-          <ProvenanceTable lat={18.5204} lng={73.8567} />
+          <ProvenanceTable lat={activeLat} lng={activeLng} />
         </div>
       )}
 
@@ -397,7 +420,7 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
 
             {/* Model Weight Breakdown */}
             <div className="pt-3 border-t border-black/5">
-              <h4 className="text-xs font-bold text-slate-900 mb-2">Regional Weighting Matrix (Western Maharashtra)</h4>
+              <h4 className="text-xs font-bold text-slate-900 mb-2">Consensus Weighting Matrix (Selected Location)</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                 {fusionData.contributingModels.map((m) => (
                   <div key={m.source} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs">
@@ -406,12 +429,80 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
                       <span className="text-orange-600">{(m.weight * 100).toFixed(0)}%</span>
                     </div>
                     <div className="mt-1 text-slate-600 font-mono text-[11px]">
-                      Temp: {m.temperatureC.toFixed(1)}°C | RH: {m.humidityPct}%
+                      Temp: {m.temperatureC.toFixed(1)}°C | RH: {m.humidityPct !== null ? `${m.humidityPct}%` : 'N/A'}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+
+            {/* Multi-Source Comparison (all sources returned for this location) */}
+            {fusionData.sourceComparison && fusionData.sourceComparison.length > 0 && (
+              <div className="pt-3 border-t border-black/5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                  <h4 className="text-xs font-bold text-slate-900">
+                    Independent Source Comparison ({fusionData.sourceComparison.length} sources)
+                  </h4>
+                  <span className="text-[10px] text-slate-500">
+                    {fusionData.sourceComparison.filter((s) => s.inConsensus).length} in weighted consensus
+                  </span>
+                </div>
+                <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-bold">Source</th>
+                        <th className="text-left px-3 py-2 font-bold">Type</th>
+                        <th className="text-right px-3 py-2 font-bold">Temp</th>
+                        <th className="text-right px-3 py-2 font-bold">RH</th>
+                        <th className="text-right px-3 py-2 font-bold">Wind</th>
+                        <th className="text-right px-3 py-2 font-bold">Δ vs Fused</th>
+                        <th className="text-center px-3 py-2 font-bold">Consensus</th>
+                        <th className="text-left px-3 py-2 font-bold">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fusionData.sourceComparison.map((s) => (
+                        <tr key={s.source} className="border-t border-slate-100">
+                          <td className="px-3 py-2 font-semibold text-slate-800">{s.source}</td>
+                          <td className="px-3 py-2 text-slate-500">{s.dataType}</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-800">
+                            {s.temperatureC !== null ? `${s.temperatureC.toFixed(1)}°C` : 'NULL'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-600">
+                            {s.humidityPct !== null ? `${s.humidityPct}%` : 'NULL'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-600">
+                            {s.windSpeedMs !== null ? `${s.windSpeedMs} m/s` : 'NULL'}
+                          </td>
+                          <td
+                            className={`px-3 py-2 text-right font-mono ${
+                              s.agreementWithFusedDegC === null
+                                ? 'text-slate-400'
+                                : Math.abs(s.agreementWithFusedDegC) > 3
+                                ? 'text-red-600 font-bold'
+                                : 'text-emerald-700'
+                            }`}
+                          >
+                            {s.agreementWithFusedDegC !== null
+                              ? `${s.agreementWithFusedDegC > 0 ? '+' : ''}${s.agreementWithFusedDegC}°C`
+                              : 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {s.inConsensus ? (
+                              <span className="text-emerald-700 font-bold">YES</span>
+                            ) : (
+                              <span className="text-slate-400">ref</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{s.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -495,9 +586,31 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
 
   if (isModal) {
     return (
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-        <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl relative">
-          {content}
+      <div
+        className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose?.();
+        }}
+      >
+        <div className="bg-white rounded-3xl max-w-5xl w-full my-auto max-h-[92vh] flex flex-col shadow-2xl">
+          {/* Always-visible close bar — never scrolls away with the content */}
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-black/5 shrink-0 bg-white rounded-t-3xl">
+            <span className="text-xs sm:text-sm font-bold text-slate-800 truncate">
+              Data Validation &amp; Provenance Center
+            </span>
+            {onClose && (
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 text-xs font-bold transition-colors"
+              >
+                <X className="w-4 h-4" />
+                <span>Close</span>
+              </button>
+            )}
+          </div>
+
+          <div className="p-4 sm:p-8 overflow-y-auto grow">{content}</div>
         </div>
       </div>
     );

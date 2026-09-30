@@ -14,30 +14,45 @@ import { fetchGoogleMapsGisStatus } from './google/googleMapsClient.js';
 
 let cachedHealth: ProviderHealthReport[] | null = null;
 let lastHealthCheckTime = 0;
+let lastHealthCheckKey = '';
 const HEALTH_CACHE_TTL_MS = 60 * 1000; // 1 minute probe cache
 
 export function clearProviderHealthCache(): void {
   cachedHealth = null;
   lastHealthCheckTime = 0;
+  lastHealthCheckKey = '';
 }
 
 let healthMonitoringInterval: NodeJS.Timeout | null = null;
+let healthMonitoringLat = 0;
+let healthMonitoringLng = 0;
 
 /**
  * Requirement F: Centralized health-check monitoring interval.
  * Reuses a single centralized timer on the backend to avoid browser client duplication.
+ * Uses the last-requested location, NOT hardcoded Pune.
  */
 export function startProviderHealthMonitoring(
-  lat: number = 18.5204,
-  lng: number = 73.8567,
+  lat: number,
+  lng: number,
   intervalMs: number = 60000
 ): void {
+  healthMonitoringLat = lat;
+  healthMonitoringLng = lng;
   if (healthMonitoringInterval) return; // Prevent duplicate polling loops
   healthMonitoringInterval = setInterval(() => {
-    checkAllProvidersHealth(lat, lng, true).catch((err) => {
+    checkAllProvidersHealth(healthMonitoringLat, healthMonitoringLng, true).catch((err) => {
       console.warn('Scheduled provider health monitoring warning:', err);
     });
   }, intervalMs);
+}
+
+/**
+ * Update the location used by the health monitoring loop without restarting it
+ */
+export function updateHealthMonitoringLocation(lat: number, lng: number): void {
+  healthMonitoringLat = lat;
+  healthMonitoringLng = lng;
 }
 
 export function stopProviderHealthMonitoring(): void {
@@ -74,12 +89,13 @@ function resolveHealthMeta(
 }
 
 export async function checkAllProvidersHealth(
-  lat: number = 18.5204,
-  lng: number = 73.8567,
+  lat: number,
+  lng: number,
   forceRefresh = false
 ): Promise<ProviderHealthReport[]> {
+  const locationKey = `${lat.toFixed(4)}:${lng.toFixed(4)}`;
   const now = Date.now();
-  if (!forceRefresh && cachedHealth && now - lastHealthCheckTime < HEALTH_CACHE_TTL_MS) {
+  if (!forceRefresh && cachedHealth && now - lastHealthCheckTime < HEALTH_CACHE_TTL_MS && lastHealthCheckKey === locationKey) {
     return cachedHealth;
   }
 
@@ -292,5 +308,6 @@ export async function checkAllProvidersHealth(
 
   cachedHealth = reports;
   lastHealthCheckTime = now;
+  lastHealthCheckKey = locationKey;
   return reports;
 }

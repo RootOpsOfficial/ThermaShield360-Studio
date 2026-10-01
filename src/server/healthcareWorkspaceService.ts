@@ -768,8 +768,9 @@ export async function getHealthcareSummary(
   const { wards, resolvedLocationName, shortLocationName } = resolveWardsForLocation(lat, lng, locationName);
 
   // 1. Thermal stress from shared engine
-  const wbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, current.windSpeed);
-  const utci = calculateUTCI(current.temp, current.humidity, current.windSpeed, current.solarIrradiance);
+  const windMs = current.windSpeed / 3.6;
+  const wbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, windMs);
+  const utci = calculateUTCI(current.temp, current.humidity, windMs, current.solarIrradiance);
 
   // 2. Compute 5-day health forecast based on real weather
   const fiveDayOutlook: HealthcareDayForecast[] = (weather.daily || []).slice(0, 5).map((d, idx) => {
@@ -836,7 +837,7 @@ export async function getHealthcareSummary(
 
   // 3. Compute High-Risk Areas from weather + local wards UHI + built density with rigorous demographic mapping
   const highRiskAreas: HealthcareRiskArea[] = wards.map((w) => {
-    const wWbgt = calculateWBGT(current.temp + (w.uhiOffsetDegC * 0.4), current.humidity, current.solarIrradiance, current.windSpeed);
+    const wWbgt = calculateWBGT(current.temp + (w.uhiOffsetDegC * 0.4), current.humidity, current.solarIrradiance, windMs);
     const score = Math.min(100, Math.round((wWbgt * 1.8) + (w.vulnerabilityIndex * 0.4) + (w.uhiOffsetDegC * 4)));
 
     let riskLevel: 'Critical' | 'High' | 'Moderate' | 'Low' = 'Moderate';

@@ -785,6 +785,7 @@ app.get('/api/citizen/local-risk-map', async (req: Request, res: Response) => {
     const { ward: currentWard, city, state } = await resolveLocationOrWard(req, lat, lon);
     const weather = await fetchWeatherData(lat, lon);
     const current = weather.current;
+    const windMs = current.windSpeed / 3.6;
     const now = new Date();
     const currentHour = now.getHours();
 
@@ -844,8 +845,8 @@ app.get('/api/citizen/local-risk-map', async (req: Request, res: Response) => {
     // Compute GeoJSON Features for each ward/area
     const features: LocalRiskMapAreaFeature[] = wardsList.map((ward) => {
       const areaTemp = Math.round((current.temp + (ward.uhiOffsetDegC - 1.5)) * 10) / 10;
-      const areaWbgt = calculateWBGT(areaTemp, current.humidity, current.solarIrradiance, current.windSpeed);
-      const areaUtci = calculateUTCI(areaTemp, current.humidity, current.windSpeed, current.solarIrradiance);
+      const areaWbgt = calculateWBGT(areaTemp, current.humidity, current.solarIrradiance, windMs);
+      const areaUtci = calculateUTCI(areaTemp, current.humidity, windMs, current.solarIrradiance);
       const composite = calculateCompositeRiskScore(areaWbgt, areaUtci, ward.vulnerabilityIndex, currentHour, ward.uhiOffsetDegC);
 
       const isCurrentArea = ward.id === activeWard?.id;
@@ -895,8 +896,8 @@ app.get('/api/citizen/local-risk-map', async (req: Request, res: Response) => {
     });
 
     // Current location thermal calculation
-    const currWbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, current.windSpeed);
-    const currUtci = calculateUTCI(current.temp, current.humidity, current.windSpeed, current.solarIrradiance);
+    const currWbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, windMs);
+    const currUtci = calculateUTCI(current.temp, current.humidity, windMs, current.solarIrradiance);
     const currComposite = calculateCompositeRiskScore(
       currWbgt,
       currUtci,
@@ -949,8 +950,9 @@ app.get('/api/citizen/my-risk', async (req: Request, res: Response) => {
     const currentHour = now.getHours();
 
     // 1. Calculate thermal indices
-    const wbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, current.windSpeed);
-    const utci = calculateUTCI(current.temp, current.humidity, current.windSpeed, current.solarIrradiance);
+    const windMs = current.windSpeed / 3.6;
+    const wbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, windMs);
+    const utci = calculateUTCI(current.temp, current.humidity, windMs, current.solarIrradiance);
     const heatIndex = calculateHeatIndex(current.temp, current.humidity);
     const thermalStressLevel = categorizeThermalStress(wbgt, utci);
     const thermalExp = getThermalCitizenExplanation(thermalStressLevel, wbgt, utci);
@@ -1031,8 +1033,8 @@ app.get('/api/citizen/my-risk', async (req: Request, res: Response) => {
 
       const hTemp = Math.round((current.temp + tempDelta) * 10) / 10;
       const hHumidity = Math.round(Math.max(25, Math.min(85, current.humidity - tempDelta * 2.5)));
-      const hWbgt = calculateWBGT(hTemp, hHumidity, hourlySolar, current.windSpeed);
-      const hUtci = calculateUTCI(hTemp, hHumidity, current.windSpeed, hourlySolar);
+      const hWbgt = calculateWBGT(hTemp, hHumidity, hourlySolar, windMs);
+      const hUtci = calculateUTCI(hTemp, hHumidity, windMs, hourlySolar);
       const hHeatIndex = calculateHeatIndex(hTemp, hHumidity);
       const hComposite = calculateCompositeRiskScore(hWbgt, hUtci, vulnerabilityScore, h, ward.uhiOffsetDegC);
 
@@ -1811,8 +1813,9 @@ app.get('/api/healthcare/location-heat-check', async (req: Request, res: Respons
     const dailyToday = weatherData.daily?.[0];
 
     // Compute thermal stresses
-    const currentWbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, current.windSpeed);
-    const currentUtci = calculateUTCI(current.temp, current.humidity, current.windSpeed, current.solarIrradiance);
+    const windMs = current.windSpeed / 3.6;
+    const currentWbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, windMs);
+    const currentUtci = calculateUTCI(current.temp, current.humidity, windMs, current.solarIrradiance);
     const currentStress = categorizeThermalStress(currentWbgt, currentUtci);
 
     const peakTemp = dailyToday ? dailyToday.tempMax : Math.max(current.temp, 38.5);

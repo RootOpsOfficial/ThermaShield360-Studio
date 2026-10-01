@@ -17,16 +17,22 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
     location,
   } = useCitizen();
 
-  // Core values with reliable defaults if telemetry is loading
-  const overallLevel: RiskLevel = thermalCurrent?.overallLevel || 'High';
-  const wbgt = thermalCurrent?.wbgt ?? 31.4;
-  const utci = thermalCurrent?.utci ?? 39.8;
-  const heatIndex = thermalCurrent?.heatIndex ?? 42.1;
+  // Core values from verified thermal engine
+  const hasThermalData = thermalCurrent !== null;
+  const overallLevel: RiskLevel = thermalCurrent?.overallLevel || (hasThermalData ? 'Moderate' : 'Moderate');
+  const wbgt = thermalCurrent?.wbgt ?? (hasThermalData ? 0 : NaN);
+  const utci = thermalCurrent?.utci ?? (hasThermalData ? 0 : NaN);
+  const heatIndex = thermalCurrent?.heatIndex ?? (hasThermalData ? 0 : NaN);
 
-  const temp = weatherCurrent?.temp ?? thermalCurrent?.ambientTemp ?? 38.6;
-  const humidity = weatherCurrent?.humidity ?? thermalCurrent?.humidity ?? 38;
-  const windSpeed = weatherCurrent?.windSpeed ?? thermalCurrent?.windSpeed ?? 9.2;
-  const solarRad = weatherCurrent?.solarIrradiance ?? thermalCurrent?.solarRadiation ?? 840;
+  const temp = weatherCurrent?.temp ?? thermalCurrent?.ambientTemp ?? (hasThermalData ? 0 : NaN);
+  const humidity = weatherCurrent?.humidity ?? thermalCurrent?.humidity ?? (hasThermalData ? 0 : NaN);
+  const windSpeed = weatherCurrent?.windSpeed ?? thermalCurrent?.windSpeed ?? (hasThermalData ? 0 : NaN);
+  const solarRad = weatherCurrent?.solarIrradiance ?? thermalCurrent?.solarRadiation ?? (hasThermalData ? 0 : NaN);
+
+  const hasLiveTemp = typeof temp === 'number' && !isNaN(temp);
+  const hasLiveWbgt = typeof wbgt === 'number' && !isNaN(wbgt);
+  const hasLiveUtci = typeof utci === 'number' && !isNaN(utci);
+  const hasLiveHeatIndex = typeof heatIndex === 'number' && !isNaN(heatIndex);
 
   // Level configuration for central status box
   const levelConfig = useMemo(() => {
@@ -135,9 +141,17 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
               THERMAL STRESS
             </h2>
           </div>
-          <div className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-500">
+          <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-500">
             <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <span>{location?.ward?.name || 'Selected Location'}</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+              {thermalCurrent?.source === 'MODELLED'
+                ? 'WBGT: Outdoor Approximation (Liljegren / ISO 7243)'
+                : hasThermalData
+                ? 'WBGT: Verified Multi-Provider Observation'
+                : 'Telemetry Synchronizing...'}
+            </span>
           </div>
         </div>
 
@@ -154,7 +168,7 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
               {levelConfig.label}
             </span>
             <span className="text-3xl sm:text-4xl font-black text-slate-950 block mt-1 tracking-tight">
-              {formatTemp(temp)}
+              {hasLiveTemp ? formatTemp(temp) : '—'}
             </span>
           </div>
         </div>
@@ -171,7 +185,7 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
             <div className="flex items-center justify-center gap-1.5 sm:gap-2">
               <span className={`w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border-2 ${wbgtData.circleBorder} ${wbgtData.circleBg} shrink-0`} />
               <span className="text-base sm:text-xl font-black text-slate-900">
-                {wbgt.toFixed(1)}°C
+                {hasLiveWbgt ? `${wbgt.toFixed(1)}°C` : '—'}
               </span>
             </div>
             <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider block ${wbgtData.textColor}`}>
@@ -187,7 +201,7 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
             <div className="flex items-center justify-center gap-1.5 sm:gap-2">
               <span className={`w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border-2 ${utciData.circleBorder} ${utciData.circleBg} shrink-0`} />
               <span className="text-base sm:text-xl font-black text-slate-900">
-                {utci.toFixed(1)}°C
+                {hasLiveUtci ? `${utci.toFixed(1)}°C` : '—'}
               </span>
             </div>
             <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider block ${utciData.textColor}`}>
@@ -203,7 +217,7 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
             <div className="flex items-center justify-center gap-1.5 sm:gap-2">
               <span className={`w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border-2 ${hiData.circleBorder} ${hiData.circleBg} shrink-0`} />
               <span className="text-base sm:text-xl font-black text-slate-900">
-                {heatIndex.toFixed(1)}°C
+                {hasLiveHeatIndex ? `${heatIndex.toFixed(1)}°C` : '—'}
               </span>
             </div>
             <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider block ${hiData.textColor}`}>
@@ -222,7 +236,7 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
               <span>Temperature</span>
             </div>
             <span className="text-base sm:text-lg font-black text-slate-950">
-              {formatTemp(temp)}
+              {hasLiveTemp ? formatTemp(temp) : '—'}
             </span>
           </div>
 
@@ -232,7 +246,7 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
               <span>Humidity</span>
             </div>
             <span className="text-base sm:text-lg font-black text-slate-950">
-              {Math.round(humidity)}%
+              {typeof humidity === 'number' && !isNaN(humidity) ? `${Math.round(humidity)}%` : '—'}
             </span>
           </div>
 
@@ -242,7 +256,7 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
               <span>Wind</span>
             </div>
             <span className="text-base sm:text-lg font-black text-slate-950">
-              {windSpeed.toFixed(1)}
+              {typeof windSpeed === 'number' && !isNaN(windSpeed) ? `${windSpeed.toFixed(1)} km/h` : '—'}
             </span>
           </div>
 
@@ -252,7 +266,7 @@ export const ThermalStressBlock: React.FC<ThermalStressBlockProps> = () => {
               <span>Solar</span>
             </div>
             <span className="text-base sm:text-lg font-black text-orange-600">
-              {solarText}
+              {typeof solarRad === 'number' && !isNaN(solarRad) ? solarText : '—'}
             </span>
           </div>
         </div>

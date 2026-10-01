@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.js';
 import { NavigationHistoryProvider, useNavigationHistory } from './context/NavigationHistoryContext.js';
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext.js';
@@ -12,6 +12,7 @@ import { MunicipalSidebar } from './components/MunicipalSidebar.js';
 import { HealthcareSidebar } from './components/HealthcareSidebar.js';
 import { DisasterSidebar } from './components/DisasterSidebar.js';
 import { AlertDrawer } from './components/AlertDrawer.js';
+import { IntelligenceBootScreen } from './components/IntelligenceBootScreen.js';
 import { CitizenPage } from './types.js';
 import { MunicipalNavPage } from './types/municipal.js';
 import { HealthcareNavPage } from './types/healthcare.js';
@@ -409,11 +410,19 @@ const RouteCoordinator: React.FC = () => {
 
 const MainContent: React.FC = () => {
   const { workspace } = useWorkspace();
-  const { activePage } = useCitizen();
+  const { activePage, location } = useCitizen();
   const { activeMunicipalPage } = useMunicipal();
   const { activeHealthcarePage } = useHealthcare();
   const { activeDisasterPage } = useDisaster();
   const { isLoading, user } = useAuth();
+
+  const [isIntelligenceBooted, setIsIntelligenceBooted] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('thermashield_booted') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   if (isLoading && !user) {
     return (
@@ -446,6 +455,38 @@ const MainContent: React.FC = () => {
   // 1. User Selection & Workspace Selector
   if (workspace === 'portal') {
     return <UserSelectionPage />;
+  }
+
+  // 2. Intelligence Engine Boot / Live Readiness Verification
+  const isDashboardWorkspace =
+    workspace === 'citizen' ||
+    workspace === 'municipal' ||
+    workspace === 'healthcare' ||
+    workspace === 'disaster';
+
+  if (isDashboardWorkspace && !isIntelligenceBooted) {
+    return (
+      <IntelligenceBootScreen
+        lat={location.lat}
+        lng={location.lng}
+        onReady={() => {
+          try {
+            sessionStorage.setItem('thermashield_booted', 'true');
+          } catch {
+            // ignore
+          }
+          setIsIntelligenceBooted(true);
+        }}
+        onContinueDegraded={() => {
+          try {
+            sessionStorage.setItem('thermashield_booted', 'true');
+          } catch {
+            // ignore
+          }
+          setIsIntelligenceBooted(true);
+        }}
+      />
+    );
   }
 
   const renderCitizenPage = () => {

@@ -49,12 +49,12 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
 }
 
 // Global browser fetch interceptor:
-// Ensures any relative '/api/*' call anywhere in the application automatically
+// Ensures any relative '/api/*' or '/health' call anywhere in the application automatically
 // routes to VITE_API_BASE_URL when deployed to Cloudflare Pages.
 if (typeof window !== 'undefined' && window.fetch && API_BASE_URL) {
   const nativeFetch = window.fetch;
   window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-    if (typeof input === 'string' && input.startsWith('/api/')) {
+    if (typeof input === 'string' && (input.startsWith('/api/') || input.startsWith('/health'))) {
       input = `${API_BASE_URL}${input}`;
     }
     return nativeFetch.call(this, input, init);

@@ -37,10 +37,11 @@ export const MyHeatRiskPage: React.FC = () => {
   } = useCitizen();
 
   // Resolve values from dedicated heatRiskData or fallback to shared engine data
-  const riskScore: number =
-    heatRiskData?.riskScore ?? riskCurrent?.riskScore ?? 76;
+  const rawRiskScore = heatRiskData?.riskScore ?? riskCurrent?.riskScore;
+  const hasLiveRisk = typeof rawRiskScore === 'number' && !isNaN(rawRiskScore);
+  const riskScore: number = hasLiveRisk ? rawRiskScore : 0;
   const riskLevel: RiskLevel =
-    heatRiskData?.riskLevel || riskCurrent?.overallRiskLevel || 'High';
+    heatRiskData?.riskLevel || riskCurrent?.overallRiskLevel || (hasLiveRisk ? 'Moderate' : 'Moderate');
   const currentStatus: string =
     heatRiskData?.currentStatus ||
     (riskLevel === 'Extreme'
@@ -284,7 +285,7 @@ export const MyHeatRiskPage: React.FC = () => {
                 </span>
                 <div className="flex items-baseline justify-center">
                   <span className="text-5xl font-black text-slate-900 tracking-tight">
-                    {riskScore}
+                    {hasLiveRisk ? riskScore : '—'}
                   </span>
                   <span className="text-xl font-bold text-slate-400">/100</span>
                 </div>

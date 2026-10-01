@@ -101,17 +101,17 @@ export const CitizenHomePage: React.FC = () => {
     year: 'numeric',
   }).format(new Date());
 
-  const currentRisk = riskCurrent?.overallRiskLevel || 'High';
-  const currentTemp = weatherCurrent?.temp ?? 38.6;
+  const currentRisk = riskCurrent?.overallRiskLevel || (weatherCurrent ? 'Moderate' : 'Moderate');
+  const currentTemp = weatherCurrent?.temp ?? (weatherCurrent ? 0 : NaN);
   const isHeatwave = heatwaveStatus?.status.includes('Heatwave');
-  const peakTemp = weatherForecast?.[0]?.tempMax ?? currentTemp + 2.8;
-  const peakTime = riskCurrent?.peakPeriod || '12:30 PM – 04:30 PM';
-  const compositeVulnerability = riskCurrent?.riskScore ?? 78;
+  const peakTemp = weatherForecast?.[0]?.tempMax ?? (!isNaN(currentTemp) ? currentTemp + 2.8 : NaN);
+  const peakTime = riskCurrent?.peakPeriod || (weatherCurrent ? '12:30 PM – 04:30 PM' : 'Synchronizing');
+  const compositeVulnerability = riskCurrent?.riskScore ?? (riskCurrent ? 0 : NaN);
 
   // Live-data flags — the UI shows an explicit "unavailable" marker instead of an invented value.
-  const hasLiveTemp = weatherCurrent !== null && typeof weatherCurrent.temp === 'number';
+  const hasLiveTemp = weatherCurrent !== null && typeof weatherCurrent.temp === 'number' && !isNaN(weatherCurrent.temp);
   const hasLivePeakTime = !!riskCurrent?.peakPeriod;
-  const hasLiveVulnerability = riskCurrent !== null && typeof riskCurrent.riskScore === 'number';
+  const hasLiveVulnerability = riskCurrent !== null && typeof riskCurrent.riskScore === 'number' && !isNaN(riskCurrent.riskScore);
 
   // Curated major locations/cities across Maharashtra & Nationwide India
   const ALL_POPULAR_LOCATIONS = [
@@ -185,23 +185,31 @@ export const CitizenHomePage: React.FC = () => {
 
   // Evaluate precise health impact level and advice sentence based on currentTemp, peakTime, and compositeVulnerability
   const getHealthImpactData = () => {
+    if (!hasLiveTemp || isNaN(currentTemp)) {
+      return {
+        healthRiskLevel: 'Moderate' as const,
+        sentence: 'Live atmospheric observations are synchronizing with the monitoring grid. Health exposure advisories will update momentarily.',
+      };
+    }
+
     // Determine overall condition: High, Moderate, or Low
     let healthRiskLevel: 'High' | 'Moderate' | 'Low' = 'Moderate';
-    if (currentTemp >= 38.0 || compositeVulnerability >= 70 || currentRisk === 'Extreme' || currentRisk === 'High') {
+    if (currentTemp >= 38.0 || (!isNaN(compositeVulnerability) && compositeVulnerability >= 70) || currentRisk === 'Extreme' || currentRisk === 'High') {
       healthRiskLevel = 'High';
-    } else if (currentTemp <= 32.0 && compositeVulnerability <= 45 && currentRisk === 'Low') {
+    } else if (currentTemp <= 32.0 && (!isNaN(compositeVulnerability) && compositeVulnerability <= 45) && currentRisk === 'Low') {
       healthRiskLevel = 'Low';
     } else {
       healthRiskLevel = 'Moderate';
     }
 
     let sentence = '';
+    const vulnStr = !isNaN(compositeVulnerability) ? `${compositeVulnerability}/100` : 'evaluating';
     if (healthRiskLevel === 'High') {
-      sentence = `At ${currentTemp.toFixed(1)}°C with an elevated vulnerability index of ${compositeVulnerability}/100, thermal stress on your cardiovascular system is HIGH — avoid direct sun exposure between ${peakTime}, stay strictly hydrated, and take frequent breaks in shaded or air-cooled locations.`;
+      sentence = `At ${currentTemp.toFixed(1)}°C with an elevated vulnerability index (${vulnStr}), thermal stress on your cardiovascular system is HIGH — avoid direct sun exposure between ${peakTime}, stay strictly hydrated, and take frequent breaks in shaded or air-cooled locations.`;
     } else if (healthRiskLevel === 'Moderate') {
-      sentence = `With an ambient temperature of ${currentTemp.toFixed(1)}°C and moderate vulnerability score of ${compositeVulnerability}/100, the health impact is MODERATE — exercise caution during the peak heat window of ${peakTime}, carry drinking water, and limit strenuous physical exertion outdoors.`;
+      sentence = `With an ambient temperature of ${currentTemp.toFixed(1)}°C and vulnerability index (${vulnStr}), the health impact is MODERATE — exercise caution during the peak heat window of ${peakTime}, carry drinking water, and limit strenuous physical exertion outdoors.`;
     } else {
-      sentence = `Current temperature is a comfortable ${currentTemp.toFixed(1)}°C with a mild vulnerability score of ${compositeVulnerability}/100, indicating a LOW health risk — routine outdoor transit and physical activities are safe with standard hydration.`;
+      sentence = `Current temperature is a comfortable ${currentTemp.toFixed(1)}°C with a mild vulnerability index (${vulnStr}), indicating a LOW health risk — routine outdoor transit and physical activities are safe with standard hydration.`;
     }
 
     return { healthRiskLevel, sentence };
@@ -211,6 +219,10 @@ export const CitizenHomePage: React.FC = () => {
 
   // Care advisory tailored for current temperature and condition
   const getCareAdvisory = () => {
+    if (!hasLiveTemp || isNaN(currentTemp)) {
+      return 'Atmospheric parameters are currently synchronizing with operational NWP models. General advisory: maintain standard hydration.';
+    }
+
     const currentHour = new Date().getHours();
     const isNight = currentHour >= 19 || currentHour < 6;
 

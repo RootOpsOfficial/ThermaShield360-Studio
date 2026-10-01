@@ -34,7 +34,7 @@ import {
 import { reverseGeocodeGoogle, searchAddressGoogle } from './src/server/googleGeocodingService.js';
 import { fetchNearbyProtectionPlaces } from './src/server/googlePlacesService.js';
 import { computeThermalSafeRoutesGoogle } from './src/server/googleRoutesService.js';
-import { calculateWBGT, calculateUTCI, calculateHeatIndex, categorizeThermalStress, calculateCompositeRiskScore, getThermalCitizenExplanation } from './src/server/thermalEngine.js';
+import { calculateWBGT, calculateUTCI, calculateHeatIndex, categorizeThermalStress, calculateCompositeRiskScore, getThermalCitizenExplanation, estimateMeanRadiantTemperature } from './src/server/thermalEngine.js';
 import { fetchWeatherData } from './src/server/weatherService.js';
 import { evaluateHumanHeatImpact } from './src/server/humanImpactEngine.js';
 import { generateRoutes } from './src/server/routingEngine.js';
@@ -1387,6 +1387,7 @@ app.get('/api/thermal/current', async (req: Request, res: Response) => {
   const current = weather.current;
   const windMs = current.windSpeed / 3.6;
 
+  const mrt = estimateMeanRadiantTemperature(current.temp, current.solarIrradiance, windMs);
   const wbgt = calculateWBGT(current.temp, current.humidity, current.solarIrradiance, windMs);
   const utci = calculateUTCI(current.temp, current.humidity, windMs, current.solarIrradiance);
   const heatIndex = calculateHeatIndex(current.temp, current.humidity);
@@ -1401,11 +1402,16 @@ app.get('/api/thermal/current', async (req: Request, res: Response) => {
     ambientTemp: current.temp,
     humidity: current.humidity,
     windSpeed: current.windSpeed,
+    windUnit: 'km/h',
+    windSpeedMs: Math.round(windMs * 10) / 10,
     solarRadiation: current.solarIrradiance,
+    mrt,
     citizenExplanation: explanation.explanation,
     whatDoesThisMean: explanation.points,
     peakPeriod: '12:30 PM – 04:30 PM',
+    utciMethodology: 'Standard UTCI polynomial approximation based on the COST Action 730 / UTCI framework (with documented MRT approximation)',
     source: weather.source,
+    timestamp: current.lastUpdated || new Date().toISOString(),
   });
 });
 

@@ -99,12 +99,28 @@ export async function checkAllProvidersHealth(
     return cachedHealth;
   }
 
-  // Execute probes in parallel with individual error protection
+  // Probe Open-Meteo domain models sequentially with minor stagger to avoid IP burst 429
+  const openMeteoRes: PromiseSettledResult<any> = await fetchOpenMeteoRaw(lat, lng)
+    .then((value) => ({ status: 'fulfilled' as const, value }))
+    .catch((reason) => ({ status: 'rejected' as const, reason }));
+
+  await new Promise((r) => setTimeout(r, 120));
+  const ecmwfRes: PromiseSettledResult<any> = await fetchEcmwfRaw(lat, lng)
+    .then((value) => ({ status: 'fulfilled' as const, value }))
+    .catch((reason) => ({ status: 'rejected' as const, reason }));
+
+  await new Promise((r) => setTimeout(r, 120));
+  const noaaGfsRes: PromiseSettledResult<any> = await fetchNoaaGfsRaw(lat, lng)
+    .then((value) => ({ status: 'fulfilled' as const, value }))
+    .catch((reason) => ({ status: 'rejected' as const, reason }));
+
+  await new Promise((r) => setTimeout(r, 120));
+  const noaaGefsRes: PromiseSettledResult<any> = await fetchNoaaGefsRaw(lat, lng)
+    .then((value) => ({ status: 'fulfilled' as const, value }))
+    .catch((reason) => ({ status: 'rejected' as const, reason }));
+
+  // Probe independent providers concurrently
   const [
-    openMeteoRes,
-    ecmwfRes,
-    noaaGfsRes,
-    noaaGefsRes,
     noaaNceiRes,
     copernicusRes,
     nasaPowerRes,
@@ -113,10 +129,6 @@ export async function checkAllProvidersHealth(
     imdRes,
     googleMapsRes,
   ] = await Promise.allSettled([
-    fetchOpenMeteoRaw(lat, lng),
-    fetchEcmwfRaw(lat, lng),
-    fetchNoaaGfsRaw(lat, lng),
-    fetchNoaaGefsRaw(lat, lng),
     fetchNoaaNceiRaw(lat, lng),
     fetchCopernicusEra5Raw(lat, lng),
     fetchNasaPowerRaw(lat, lng),

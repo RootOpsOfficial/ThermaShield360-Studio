@@ -29,11 +29,12 @@ export async function fetchImdRaw(
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PROVIDER_REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), 1500); // Fast 1.5s timeout to prevent hanging
 
     // Probe IMD official Mausam portal
     const response = await fetch(mausamUrl, {
-      method: 'HEAD',
+      method: 'GET',
+      headers: { 'User-Agent': 'ThermaShield-360-Engine' },
       signal: controller.signal,
     });
     clearTimeout(timeout);

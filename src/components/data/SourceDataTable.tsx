@@ -23,6 +23,7 @@ import {
   ingestAndAuditAllSources,
 } from '../../services/validation/provenanceLedger.js';
 import { ValidationAuditResult } from '../../services/validation/validationEngine.js';
+import { getApiUrl } from '../../lib/api.js';
 
 export interface SourceDataTableProps {
   lat?: number;
@@ -65,7 +66,7 @@ export const SourceDataTable: React.FC<SourceDataTableProps> = ({
     if (lat === undefined || lng === undefined) return;
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/data/provenance?lat=${lat}&lng=${lng}${force ? '&refresh=true' : ''}`);
+      const res = await fetch(getApiUrl(`/api/data/provenance?lat=${lat}&lng=${lng}${force ? '&refresh=true' : ''}`));
       if (res.ok) {
         const data = await res.json();
         setLedger(data);

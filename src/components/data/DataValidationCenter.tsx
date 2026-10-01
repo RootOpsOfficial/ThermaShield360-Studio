@@ -23,6 +23,7 @@ import { ProvenanceTable } from './ProvenanceTable.js';
 import { generateMultiHorizonLadder, MultiHorizonLadderReport } from '../../services/earlyWarning/multiHorizonLadder.js';
 import { fuseMultiSourceRecords, FusedConsensusMeteorology } from '../../services/fusion/multiSourceFusionEngine.js';
 import { ingestAndAuditAllSources } from '../../services/validation/provenanceLedger.js';
+import { getApiUrl } from '../../lib/api.js';
 
 interface DataValidationCenterProps {
   onClose?: () => void;
@@ -64,7 +65,7 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
     setIsLoadingHealth(true);
     try {
       // 1. Fetch provider health from server using selected location
-      const healthRes = await fetch(`/api/data/health?lat=${activeLat}&lng=${activeLng}${force ? '&refresh=true' : ''}`);
+      const healthRes = await fetch(getApiUrl(`/api/data/health?lat=${activeLat}&lng=${activeLng}${force ? '&refresh=true' : ''}`));
       if (healthRes.ok) {
         const health = await healthRes.json();
         setProviders(health);
@@ -74,7 +75,7 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
       }
 
       // 2. Fetch multi-source fusion consensus from server using selected location
-      const fusionRes = await fetch(`/api/data/fusion?lat=${activeLat}&lng=${activeLng}${force ? '&refresh=true' : ''}`);
+      const fusionRes = await fetch(getApiUrl(`/api/data/fusion?lat=${activeLat}&lng=${activeLng}${force ? '&refresh=true' : ''}`));
       if (fusionRes.ok) {
         const fused = await fusionRes.json();
         setFusionData(fused);
@@ -85,7 +86,7 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
       }
 
       // 3. Fetch multi-horizon early warning ladder from server using selected location
-      const ladderRes = await fetch(`/api/data/ladder?lat=${activeLat}&lng=${activeLng}&location=${encodeURIComponent(activeLocationName)}`);
+      const ladderRes = await fetch(getApiUrl(`/api/data/ladder?lat=${activeLat}&lng=${activeLng}&location=${encodeURIComponent(activeLocationName)}`));
       if (ladderRes.ok) {
         const ladderData = await ladderRes.json();
         setLadder(ladderData);

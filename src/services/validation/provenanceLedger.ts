@@ -75,6 +75,15 @@ export function clearProvenanceCache(): void {
   lastIngestKey = '';
 }
 
+export function getCachedProvenanceLedger(lat: number, lng: number): ProvenanceLedgerState | null {
+  const locationKey = `${lat.toFixed(4)}:${lng.toFixed(4)}`;
+  const now = Date.now();
+  if (activeLedger && now - lastIngestTime < LEDGER_TTL_MS && lastIngestKey === locationKey) {
+    return activeLedger;
+  }
+  return null;
+}
+
 export async function ingestAndAuditAllSources(
   lat: number,
   lng: number,
@@ -87,18 +96,15 @@ export async function ingestAndAuditAllSources(
     return activeLedger;
   }
 
-  // Fetch all weather/climate sources in parallel
-  const [
-    openMeteoRaw,
-    ecmwfRaw,
-    noaaGfsRaw,
-    era5Raw,
-    nasaPowerRaw,
-    imdRaw,
-  ] = await Promise.all([
-    fetchOpenMeteoRaw(lat, lng),
-    fetchEcmwfRaw(lat, lng),
-    fetchNoaaGfsRaw(lat, lng),
+  // Stagger requests to api.open-meteo.com to avoid burst rate-limits
+  const openMeteoRaw = await fetchOpenMeteoRaw(lat, lng);
+  await new Promise((r) => setTimeout(r, 120));
+  const ecmwfRaw = await fetchEcmwfRaw(lat, lng);
+  await new Promise((r) => setTimeout(r, 120));
+  const noaaGfsRaw = await fetchNoaaGfsRaw(lat, lng);
+
+  // Independent domains can execute concurrently without IP contention
+  const [era5Raw, nasaPowerRaw, imdRaw] = await Promise.all([
     fetchCopernicusEra5Raw(lat, lng),
     fetchNasaPowerRaw(lat, lng),
     fetchImdRaw(lat, lng),

@@ -165,8 +165,8 @@ export async function fetchWeatherData(
   const cacheKey = `${lat.toFixed(2)},${lng.toFixed(2)}`;
   const cached = cache.get(cacheKey);
 
-  // Return fresh cache if within TTL (5 minutes)
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+  // Return fresh cache if within TTL (5 minutes) and verified LIVE
+  if (cached && cached.current.source === 'LIVE' && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return {
       current: cached.current,
       hourly: cached.hourly,
@@ -181,7 +181,7 @@ export async function fetchWeatherData(
     return existingInFlight;
   }
 
-  // If in rate-limit backoff period, use stale cache if available or calibrate model
+  // If in rate-limit backoff period, use stale cache if available or compute model without polluting cache
   if (isOpenMeteoInCooldown()) {
     if (cached) {
       return {
@@ -192,9 +192,7 @@ export async function fetchWeatherData(
       };
     }
     const fallback = getFallbackModelledWeather(lat, lng);
-    const result = { ...fallback, source: 'MODELLED' as DataSourceLabel };
-    cache.set(cacheKey, { timestamp: Date.now(), ...result });
-    return result;
+    return { ...fallback, source: 'MODELLED' as DataSourceLabel };
   }
 
   const fetchPromise = (async () => {
@@ -222,9 +220,7 @@ export async function fetchWeatherData(
           };
         }
         const fallback = getFallbackModelledWeather(lat, lng);
-        const result = { ...fallback, source: 'MODELLED' as DataSourceLabel };
-        cache.set(cacheKey, { timestamp: Date.now(), ...result });
-        return result;
+        return { ...fallback, source: 'MODELLED' as DataSourceLabel };
       }
 
       if (!res.ok) {
@@ -349,9 +345,7 @@ export async function fetchWeatherData(
         };
       }
       const fallback = getFallbackModelledWeather(lat, lng);
-      const result = { ...fallback, source: 'MODELLED' as DataSourceLabel };
-      cache.set(cacheKey, { timestamp: Date.now(), ...result });
-      return result;
+      return { ...fallback, source: 'MODELLED' as DataSourceLabel };
     } finally {
       inFlightWeatherFetches.delete(cacheKey);
     }

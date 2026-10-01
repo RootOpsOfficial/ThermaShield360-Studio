@@ -207,49 +207,47 @@ export async function fetchNoaaGefsRaw(
           });
         }
 
-        // Statistical reductions
+        // Mathematical ensemble metrics derived strictly from actual members
         memberTemps.sort((a, b) => a - b);
-        const meanTemp = Math.round((memberTemps.reduce((a, b) => a + b, 0) / memberTemps.length) * 10) / 10;
+        const n = memberTemps.length;
         const minTemp = memberTemps[0];
-        const maxTemp = memberTemps[memberTemps.length - 1];
-        const p10 = memberTemps[Math.floor(memberTemps.length * 0.1)];
-        const p50 = memberTemps[Math.floor(memberTemps.length * 0.5)];
-        const p90 = memberTemps[Math.floor(memberTemps.length * 0.9)];
-        const variance = memberTemps.reduce((acc, t) => acc + Math.pow(t - meanTemp, 2), 0) / memberTemps.length;
-        const stdDev = Math.round(Math.sqrt(variance) * 10) / 10;
+        const maxTemp = memberTemps[n - 1];
+        const meanTemp = Math.round((memberTemps.reduce((a, b) => a + b, 0) / n) * 10) / 10;
 
-        // Probabilities
-        const probOver38 = Math.round((memberTemps.filter((t) => t >= 38.0).length / memberTemps.length) * 100);
-        const probOver40 = Math.round((memberTemps.filter((t) => t >= 40.0).length / memberTemps.length) * 100);
-        const probOver42 = Math.round((memberTemps.filter((t) => t >= 42.0).length / memberTemps.length) * 100);
+        // Real ensemble spread (sample standard deviation across members)
+        const variance = memberTemps.reduce((acc, t) => acc + Math.pow(t - meanTemp, 2), 0) / (n - 1 || 1);
+        const ensembleSpread = Math.round(Math.sqrt(variance) * 10) / 10;
 
-        // Classification of ensemble spread
-        let spreadConfidence: 'HIGH' | 'MODERATE' | 'LOW' = 'HIGH';
-        if (stdDev > 2.5) spreadConfidence = 'LOW';
-        else if (stdDev > 1.2) spreadConfidence = 'MODERATE';
+        // Quantiles
+        const p10 = memberTemps[Math.floor(n * 0.1)] ?? minTemp;
+        const p50 = memberTemps[Math.floor(n * 0.5)] ?? meanTemp;
+        const p90 = memberTemps[Math.floor(n * 0.9)] ?? maxTemp;
+
+        // Heatwave exceedance: percentage of members with T >= 40.0°C
+        const exceedanceCount = memberTemps.filter((t) => t >= 40.0).length;
+        const exceedancePct = Math.round((exceedanceCount / n) * 100);
 
         const rawData: NoaaGefsRawData = {
-          model: 'GEFS-0.5',
-          cycle: `${String(cycleHour).padStart(2, '0')}z` as '00z' | '06z' | '12z' | '18z',
-          runTime,
-          gridResolution: '0.5 deg (~55km)',
+          model: 'GEFS-Global-Ensemble',
+          ensembleMemberCount: n,
+          run: runTime,
+          issuedAt: runTime,
+          validTime,
+          leadHours: currentHourIndex,
           latitude: gridLat,
           longitude: gridLng,
-          forecastLeadHours: currentHourIndex,
-          ensembleMemberCount: members.length,
-          meanTemperatureC: meanTemp,
-          p10TemperatureC: p10,
-          p50TemperatureC: p50,
-          p90TemperatureC: p90,
-          minTemperatureC: minTemp,
-          maxTemperatureC: maxTemp,
-          stdDevTemperatureC: stdDev,
-          probTempExceeding38C: probOver38,
-          probTempExceeding40C: probOver40,
-          probTempExceeding42C: probOver42,
-          spreadConfidence,
+          ensembleMeanTempC: meanTemp,
+          ensembleSpreadDegC: ensembleSpread,
+          ensembleP10TempC: p10,
+          ensembleP50TempC: p50,
+          ensembleP90TempC: p90,
+          ensembleMaxTempC: maxTemp,
+          ensembleMinTempC: minTemp,
+          heatwaveExceedanceProbabilityPct: exceedancePct,
+          relativeHumidityMeanPct: null,
+          windSpeedMeanMs: null,
           members,
-          nomadsUrl: 'https://nomads.ncep.noaa.gov/pub/data/nccf/com/gens/prod/',
+          sourceUrl: endpoint,
         };
 
         return {

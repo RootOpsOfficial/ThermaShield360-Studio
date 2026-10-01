@@ -160,6 +160,18 @@ const RouteCoordinator: React.FC = () => {
 
   // Sync state to URL hash
   useEffect(() => {
+    if (isLoading) return;
+
+    if (
+      typeof window !== 'undefined' &&
+      (window.location.hash.includes('access_token') ||
+        window.location.hash.includes('error') ||
+        window.location.search.includes('code=') ||
+        window.location.search.includes('error='))
+    ) {
+      return;
+    }
+
     let targetHash = '#login';
     if (workspace === 'login') {
       targetHash = '#login';

@@ -641,7 +641,7 @@ export const LoginPage: React.FC = () => {
                   type="button"
                   onClick={loginWithGoogle}
                   disabled={isLoading}
-                  className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-[0.99] text-slate-700 border border-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-[0.99] text-slate-700 border border-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path
@@ -663,6 +663,19 @@ export const LoginPage: React.FC = () => {
                   </svg>
                   <span>Continue with Google</span>
                 </button>
+                {typeof window !== 'undefined' && window.self !== window.top && (
+                  <p className="mt-2 text-[10px] text-center text-slate-500">
+                    Running in preview frame. Google Sign-In will open in a secure popup tab, or{' '}
+                    <a
+                      href={window.location.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-orange-600 font-bold hover:underline"
+                    >
+                      open full window
+                    </a>.
+                  </p>
+                )}
               </>
             )}
 

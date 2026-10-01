@@ -334,7 +334,7 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
     } catch (err: any) {
       console.error('Error fetching backend intelligence:', err);
-      setApiError('Unable to refresh live data. Operating in offline/cached safety mode.');
+      setApiError('Atmospheric intelligence server is connecting (cloud backend may take a moment to wake up). Click Refresh to retry.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

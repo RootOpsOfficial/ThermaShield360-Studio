@@ -28,7 +28,7 @@ function getApiKey(): string {
   return (
     process.env.GOOGLE_MAPS_API_KEY ||
     process.env.VITE_GOOGLE_MAPS_API_KEY ||
-    'AIzaSyBgl3EA6QqKQeI1j1BCu2UjDiYVYInBSlQ'
+    ''
   );
 }
 

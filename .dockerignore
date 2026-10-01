@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-server
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+.vscode
+.antigravity
+.kilo

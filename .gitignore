@@ -4,11 +4,17 @@ node_modules/
 # Environment / secrets
 .env
 .env.*
+.env.local
+.env.production
+*.key
+*.pem
+service-account*.json
 !.env.example
 
 # Build output
 dist/
 build/
+server.js
 .vite/
 
 # Logs
@@ -27,5 +33,6 @@ desktop.ini
 !.vscode/extensions.json
 !.vscode/settings.json
 
-# Antigravity / local AI tool files
+# Tool / worktree caches
 .antigravity/
+.kilo/

@@ -225,7 +225,7 @@ export const GoogleThermalGisMap: React.FC<GoogleThermalGisMapProps> = ({
   } = useCitizen();
 
   const apiKey =
-    import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyBgl3EA6QqKQeI1j1BCu2UjDiYVYInBSlQ';
+    import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
   const mapCenter = useMemo(() => {
     return {

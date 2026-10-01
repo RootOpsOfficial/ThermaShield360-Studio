@@ -243,6 +243,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     async function initAuth() {
       setIsLoading(true);
+
+      // 1. Check for OAuth callback error parameters in URL query or hash
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        let hashRaw = window.location.hash.replace(/^#\/?/, '');
+        const hashParams = new URLSearchParams(hashRaw.includes('?') ? hashRaw.split('?')[1] : hashRaw);
+
+        const rawError =
+          searchParams.get('error_description') ||
+          searchParams.get('error') ||
+          hashParams.get('error_description') ||
+          hashParams.get('error');
+
+        if (rawError) {
+          const friendlyMsg = decodeURIComponent(rawError).replace(/\+/g, ' ');
+          console.warn('[AuthContext] OAuth error received from provider:', friendlyMsg);
+          setError(`Authentication Notice: ${friendlyMsg}`);
+          if (window.history?.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        }
+
+        // 2. Check for PKCE authorization code in URL
+        const authCode = searchParams.get('code');
+        if (authCode) {
+          const { data: exchangeData, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(authCode);
+          if (exchangeErr) {
+            console.warn('[AuthContext] Exchange code notice:', exchangeErr.message);
+          } else if (exchangeData?.session?.user && mounted) {
+            const profile = await fetchProfileForUser(
+              exchangeData.session.user.id,
+              exchangeData.session.user.email || '',
+              exchangeData.session.user.user_metadata
+            );
+            if (mounted) {
+              saveLocalUser(profile);
+              setIsLoading(false);
+              if (window.history?.replaceState) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+              }
+              return;
+            }
+          }
+        }
+      } catch (paramErr) {
+        console.warn('[AuthContext] URL param parse notice:', paramErr);
+      }
+
+      // 3. Check existing Supabase session
       try {
         const { data, error: sessionErr } = await supabase.auth.getSession();
         if (sessionErr) {
@@ -444,15 +493,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
 
     try {
-      const { error: sbError } = await supabase.auth.signInWithOAuth({
+      const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+      const redirectUrl = window.location.origin;
+
+      const { data, error: sbError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: isInIframe,
         },
       });
 
       if (sbError) {
         setError(sbError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // If running inside an iframe (such as AI Studio or preview sandbox),
+      // accounts.google.com blocks iframe rendering via X-Frame-Options: SAMEORIGIN.
+      // Opening data.url in a top-level tab bypasses this restriction cleanly.
+      if (isInIframe && data?.url) {
+        window.open(data.url, '_blank');
         setIsLoading(false);
       }
     } catch (err: any) {

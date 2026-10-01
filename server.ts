@@ -3,6 +3,7 @@ dotenv.config();
 
 import express, { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { checkSupabaseHealth } from './src/server/db.js';
 import {
@@ -85,9 +86,101 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json());
+
+// ==========================================
+// PRODUCTION & DEVELOPMENT CORS
+// ==========================================
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const devOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin) {
+    const isAllowed =
+      configuredOrigins.includes(origin) ||
+      origin.endsWith('.pages.dev') ||
+      (process.env.NODE_ENV !== 'production' && devOrigins.some((dev) => origin.startsWith(dev))) ||
+      configuredOrigins.length === 0;
+
+    if (isAllowed) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+  }
+
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+  );
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+  );
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+// ==========================================
+// PRODUCTION HEALTH & READINESS ENDPOINTS
+// ==========================================
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    service: 'ThermaShield-360-Engine',
+    environment: process.env.NODE_ENV || 'development',
+  });
+});
+
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    service: 'ThermaShield-360-Engine',
+  });
+});
+
+app.get('/api/health/diagnostics', async (_req: Request, res: Response) => {
+  try {
+    const dbHealth = await checkSupabaseHealth();
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: dbHealth,
+      dataMode: process.env.DATA_MODE || 'live',
+      configuredProviders: {
+        openMeteo: true,
+        ecmwf: true,
+        noaaGfs: true,
+        noaaGefs: true,
+        copernicusEra5: Boolean(process.env.COPERNICUS_CDS_API_KEY),
+        nasaFirms: Boolean(process.env.NASA_FIRMS_MAP_KEY),
+        openAq: Boolean(process.env.OPENAQ_API_KEY),
+        googleMaps: Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY),
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ status: 'degraded', error: err?.message || 'Diagnostic error' });
+  }
+});
 
 // Helper to parse query coords — NO silent Pune fallback
 // If lat/lng are missing or invalid, returns null so the caller can handle it appropriately
@@ -2542,12 +2635,18 @@ app.get('/api/data/fusion', async (req: Request, res: Response) => {
 
 // Mount Vite or static build
 async function startServer() {
-  if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, 'dist')));
+  const distPath = path.join(__dirname, 'dist');
+  const distExists = fs.existsSync(path.join(distPath, 'index.html'));
+  const isProduction = process.env.NODE_ENV === 'production' || (distExists && process.env.NODE_ENV !== 'development');
+
+  if (isProduction && distExists) {
+    console.log(`[ThermaShield 360] Starting in PRODUCTION mode (serving ${distPath})`);
+    app.use(express.static(distPath));
     app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   } else {
+    console.log('[ThermaShield 360] Starting in DEVELOPMENT mode (Vite middleware)');
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -2556,9 +2655,20 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`ThermaShield 360 Citizen Server running at http://0.0.0.0:${PORT}`);
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`ThermaShield 360 Server running at http://0.0.0.0:${PORT}`);
+    console.log(`Health check: http://0.0.0.0:${PORT}/health`);
   });
+
+  process.on('SIGTERM', () => {
+    console.log('[ThermaShield 360] SIGTERM signal received: closing HTTP server');
+    server.close(() => {
+      console.log('[ThermaShield 360] HTTP server closed gracefully');
+      process.exit(0);
+    });
+  });
+
+  return server;
 }
 
 startServer();

@@ -1064,10 +1064,6 @@ export const CitizenHomePage: React.FC = () => {
           </button>
         </div>
       </section>
-
-      {showProvenanceModal && (
-        <DataValidationCenter isModal onClose={() => setShowProvenanceModal(false)} lat={location.lat} lng={location.lng} locationName={location.ward?.name} />
-      )}
     </div>
   );
 };

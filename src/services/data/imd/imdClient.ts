@@ -9,6 +9,36 @@ import {
   PROVIDER_REQUEST_TIMEOUT_MS,
 } from '../clientUtils.js';
 
+// IMD Station Registry with approximate coverage radii
+// Only locations within reasonable proximity of a supported station should receive IMD data
+interface ImdStation {
+  code: string;
+  name: string;
+  city: string;
+  lat: number;
+  lng: number;
+  maxCoverageKm: number; // Maximum distance at which this station's data is meaningful
+}
+
+const IMD_STATIONS: ImdStation[] = [
+  { code: '43063_PUN', name: 'Pune (Shivajinagar Observatory)', city: 'Pune', lat: 18.5314, lng: 73.8446, maxCoverageKm: 80 },
+  // Additional stations can be added here when available
+  // { code: '43003_DEL', name: 'New Delhi (Safdarjung)', city: 'Delhi', lat: 28.5847, lng: 77.2066, maxCoverageKm: 60 },
+];
+
+function findNearestImdStation(lat: number, lng: number): { station: ImdStation; distKm: number } | null {
+  let nearest: { station: ImdStation; distKm: number } | null = null;
+  for (const station of IMD_STATIONS) {
+    const dist = calculateHaversineDistanceKm(lat, lng, station.lat, station.lng);
+    if (dist <= station.maxCoverageKm) {
+      if (!nearest || dist < nearest.distKm) {
+        nearest = { station, distKm: dist };
+      }
+    }
+  }
+  return nearest;
+}
+
 export async function fetchImdRaw(
   lat: number,
   lng: number
@@ -20,10 +50,35 @@ export async function fetchImdRaw(
     if (intercepted) return intercepted as RawProviderPayload<ImdRawData>;
   }
 
-  // Official IMD Pune Shivajinagar Observatory AWS Station 43063_PUN
-  const stationLat = 18.5314;
-  const stationLng = 73.8446;
-  const distKm = calculateHaversineDistanceKm(lat, lng, stationLat, stationLng);
+  // Find nearest IMD station within coverage range
+  const stationMatch = findNearestImdStation(lat, lng);
+
+  if (!stationMatch) {
+    // No IMD station available for this location — return NOT_AVAILABLE honestly
+    return createUnavailablePayload({
+      provider: 'IMD',
+      providerId: 'imd',
+      sourceUrl: 'https://mausam.imd.gov.in/',
+      model: 'No IMD station within coverage range',
+      availability: 'NOT_AVAILABLE',
+      httpStatus: 0,
+      responseTimeMs: 0,
+      dataType: 'NOT_AVAILABLE',
+      sourceRole: 'OBSERVATION',
+      errorMessage: `No IMD observatory registered within coverage radius for coordinates [${lat.toFixed(4)}, ${lng.toFixed(4)}]. Nearest supported station is in Pune (~${Math.round(calculateHaversineDistanceKm(lat, lng, 18.5314, 73.8446))} km away).`,
+      latitude: lat,
+      longitude: lng,
+      sourceLatitude: null,
+      sourceLongitude: null,
+      spatialMethod: 'STATION',
+      spatialDistanceKm: null,
+      resolution: 'No station in range',
+    });
+  }
+
+  const { station: activeStation, distKm } = stationMatch;
+  const stationLat = activeStation.lat;
+  const stationLng = activeStation.lng;
   const mausamUrl = 'https://mausam.imd.gov.in/';
   const startTime = Date.now();
 
@@ -47,7 +102,7 @@ export async function fetchImdRaw(
         provider: 'IMD',
         providerId: 'imd',
         sourceUrl: mausamUrl,
-        model: 'IMD AWS In-Situ Station & Warnings',
+        model: `IMD AWS In-Situ Station & Warnings (${activeStation.name})`,
         availability: avail,
         httpStatus: response.status,
         responseTimeMs,
@@ -60,7 +115,7 @@ export async function fetchImdRaw(
         sourceLongitude: stationLng,
         spatialMethod: 'STATION',
         spatialDistanceKm: distKm,
-        resolution: 'Observatory ground station (Shivajinagar 43063_PUN)',
+        resolution: `Observatory ground station (${activeStation.code})`,
       });
     }
 
@@ -68,7 +123,7 @@ export async function fetchImdRaw(
     let obsData: any = null;
     let endpointStatus = 200;
     try {
-      const imdEndpoint = 'https://mausam.imd.gov.in/api/district_forecast.php?district=Pune';
+      const imdEndpoint = `https://mausam.imd.gov.in/api/district_forecast.php?district=${activeStation.city}`;
       const imdRes = await fetch(imdEndpoint, { signal: AbortSignal.timeout(3000) });
       endpointStatus = imdRes.status;
       if (imdRes.ok) {
@@ -89,7 +144,7 @@ export async function fetchImdRaw(
         provider: 'IMD',
         providerId: 'imd',
         sourceUrl: mausamUrl,
-        model: 'IMD AWS In-Situ Station & Warnings',
+        model: `IMD AWS In-Situ Station & Warnings (${activeStation.name})`,
         availability,
         httpStatus: endpointStatus,
         responseTimeMs,
@@ -102,7 +157,7 @@ export async function fetchImdRaw(
         sourceLongitude: stationLng,
         spatialMethod: 'STATION',
         spatialDistanceKm: distKm,
-        resolution: 'Observatory ground station (Shivajinagar 43063_PUN)',
+        resolution: `Observatory ground station (${activeStation.code})`,
       });
     }
 
@@ -142,8 +197,8 @@ export async function fetchImdRaw(
     }
 
     const station: ImdStationObservation = {
-      stationCode: '43063_PUN',
-      stationName: 'Pune (Shivajinagar Observatory)',
+      stationCode: activeStation.code,
+      stationName: activeStation.name,
       observedAt: nowIso,
       currentTemperatureC: currentTemp,
       maxTemperatureC: maxTemp,
@@ -156,7 +211,7 @@ export async function fetchImdRaw(
     };
 
     const warning: ImdDistrictWarning = {
-      district: 'Pune',
+      district: activeStation.city,
       state: 'Maharashtra',
       warningDate: nowIso.split('T')[0],
       alertCode,
@@ -186,12 +241,12 @@ export async function fetchImdRaw(
       provider: 'IMD',
       providerId: 'imd',
       sourceUrl: mausamUrl,
-      model: 'IMD AWS In-Situ Station & Warnings',
+      model: `IMD AWS In-Situ Station & Warnings (${activeStation.name})`,
       run: nowIso,
       issuedAt: nowIso,
       validTime: nowIso,
       forecastLeadHours: 0,
-      resolution: 'Observatory ground station (Shivajinagar 43063_PUN)',
+      resolution: `Observatory ground station (${activeStation.code})`,
       latitude: lat,
       longitude: lng,
       sourceLatitude: stationLat,
@@ -216,7 +271,7 @@ export async function fetchImdRaw(
       provider: 'IMD',
       providerId: 'imd',
       sourceUrl: mausamUrl,
-      model: 'IMD AWS In-Situ Station & Warnings',
+      model: `IMD AWS In-Situ Station & Warnings (${activeStation.name})`,
       availability: avail,
       httpStatus: 0,
       responseTimeMs,
@@ -229,7 +284,7 @@ export async function fetchImdRaw(
       sourceLongitude: stationLng,
       spatialMethod: 'STATION',
       spatialDistanceKm: distKm,
-      resolution: 'Observatory ground station (Shivajinagar 43063_PUN)',
+      resolution: `Observatory ground station (${activeStation.code})`,
     });
   }
 }

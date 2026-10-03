@@ -40,6 +40,7 @@ import { evaluateHumanHeatImpact } from './src/server/humanImpactEngine.js';
 import { generateRoutes } from './src/server/routingEngine.js';
 import { getAdaptiveRecommendations, getCitizenAlerts, getCitizenAlertHistory } from './src/server/intelligenceEngine.js';
 import { generateLongRangeEarlyWarning } from './src/server/longRangeEarlyWarning.js';
+import { generateSpatialHeatmap } from './src/server/spatialHeatmapService.js';
 import { fetchNearbyHealthcareFromOSM, getHealthcareFacilityById, calculateHealthcareRoute } from './src/server/healthcareService.js';
 import { RiskLevel, ProtectionSummary, WardInfo, CitizenMyRiskData, CitizenHeatRiskResponse, LocalRiskMapAreaFeature, LocalRiskMapResponse } from './src/server/types.js';
 import {
@@ -2683,6 +2684,29 @@ app.get('/api/institutional/configs', requireAuth, requireApprover, async (_req:
   } catch (err: any) {
     console.error('Error in GET /api/institutional/configs:', err);
     res.status(500).json({ error: 'Failed to fetch approval configurations' });
+  }
+});
+
+// ==========================================
+// SPATIAL HEATMAP API — Thermal risk grid for map visualization
+// ==========================================
+app.get('/api/weather/spatial-heatmap', async (req: Request, res: Response) => {
+  try {
+    const north = parseFloat(req.query.north as string);
+    const south = parseFloat(req.query.south as string);
+    const east = parseFloat(req.query.east as string);
+    const west = parseFloat(req.query.west as string);
+    const zoom = parseInt(req.query.zoom as string, 10) || 5;
+
+    if (isNaN(north) || isNaN(south) || isNaN(east) || isNaN(west)) {
+      return res.status(400).json({ error: 'Missing or invalid bounding box parameters (north, south, east, west)' });
+    }
+
+    const data = await generateSpatialHeatmap(north, south, east, west, zoom);
+    res.json(data);
+  } catch (err: any) {
+    console.error('Error in /api/weather/spatial-heatmap:', err);
+    res.status(500).json({ error: 'Failed to generate spatial heatmap' });
   }
 });
 

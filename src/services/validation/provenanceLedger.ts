@@ -19,6 +19,7 @@ import {
   normalizeImdPayload,
 } from '../normalization/normalizerService.js';
 import { isRecordQuarantined } from '../fusion/multiSourceFusionEngine.js';
+import { clearOpenMeteoCooldown } from '../data/openMeteoLimiter.js';
 
 export interface ProvenanceAuditEntry {
   // Canonical 25-Field Traceability Contract
@@ -96,11 +97,18 @@ export async function ingestAndAuditAllSources(
     return activeLedger;
   }
 
+  // When location changes, clear any lingering rate-limit cooldown from previous location
+  // This prevents previous location's 429 from blocking new location data fetch
+  if (lastIngestKey !== locationKey) {
+    clearOpenMeteoCooldown();
+  }
+
   // Stagger requests to api.open-meteo.com to avoid burst rate-limits
+  // All three open-meteo-domain providers run sequentially with 350ms gaps
   const openMeteoRaw = await fetchOpenMeteoRaw(lat, lng);
-  await new Promise((r) => setTimeout(r, 120));
+  await new Promise((r) => setTimeout(r, 350));
   const ecmwfRaw = await fetchEcmwfRaw(lat, lng);
-  await new Promise((r) => setTimeout(r, 120));
+  await new Promise((r) => setTimeout(r, 350));
   const noaaGfsRaw = await fetchNoaaGfsRaw(lat, lng);
 
   // Independent domains can execute concurrently without IP contention
@@ -197,14 +205,14 @@ export async function ingestAndAuditAllSources(
     { rec: openMeteoRecord, variable: 'Temperature', val: openMeteoRecord.temperatureC, unit: '°C', type: 'Current Observation', details: 'High-res operational mesh' },
     { rec: ecmwfRecord, variable: 'Temperature', val: ecmwfRecord.temperatureC, unit: '°C', type: 'Global Forecast (IFS)', details: 'ECMWF 0.25° dynamic core' },
     { rec: noaaRecord, variable: 'Temperature', val: noaaRecord.temperatureC, unit: '°C', type: 'Global Forecast (GFS)', details: 'NOAA 0.25° NWP cycle' },
-    { rec: imdRecord, variable: 'Temperature', val: imdRecord.temperatureC, unit: '°C', type: 'In-Situ Station (IMD)', details: 'Shivajinagar AWS Observatory' },
+    { rec: imdRecord, variable: 'Temperature', val: imdRecord.temperatureC, unit: '°C', type: 'In-Situ Station (IMD)', details: imdRecord.model || 'IMD Station' },
     { rec: era5Record, variable: 'Temperature', val: era5Record.temperatureC, unit: '°C', type: 'Historical Reanalysis', details: 'WMO 30-year climatological normal' },
 
     // Relative Humidity entries
     { rec: openMeteoRecord, variable: 'Relative Humidity', val: openMeteoRecord.relativeHumidityPercent, unit: '%', type: 'Current Observation', details: 'Near-surface hygrometer reading' },
     { rec: ecmwfRecord, variable: 'Relative Humidity', val: ecmwfRecord.relativeHumidityPercent, unit: '%', type: 'Global Forecast (IFS)', details: 'Integrated Forecasting System 2m RH' },
     { rec: noaaRecord, variable: 'Relative Humidity', val: noaaRecord.relativeHumidityPercent, unit: '%', type: 'Global Forecast (GFS)', details: 'GFS 2m Relative Humidity' },
-    { rec: imdRecord, variable: 'Relative Humidity', val: imdRecord.relativeHumidityPercent, unit: '%', type: 'In-Situ Station (IMD)', details: 'IMD Pune Psychrometer' },
+    { rec: imdRecord, variable: 'Relative Humidity', val: imdRecord.relativeHumidityPercent, unit: '%', type: 'In-Situ Station (IMD)', details: imdRecord.model || 'IMD Station' },
 
     // Solar Radiation entries
     { rec: nasaRecord, variable: 'Solar Radiation', val: nasaRecord.solarRadiationWm2, unit: 'W/m²', type: 'Solar Irradiance (GHI)', details: 'NASA POWER satellite flux assimilation' },
@@ -212,7 +220,7 @@ export async function ingestAndAuditAllSources(
 
     // Wind Speed entries
     { rec: openMeteoRecord, variable: 'Wind Speed', val: openMeteoRecord.windSpeedMs, unit: 'm/s', type: 'Current Observation', details: '10m anemometer speed' },
-    { rec: imdRecord, variable: 'Wind Speed', val: imdRecord.windSpeedMs, unit: 'm/s', type: 'Station Observation', details: 'IMD Pune Anemometer' },
+    { rec: imdRecord, variable: 'Wind Speed', val: imdRecord.windSpeedMs, unit: 'm/s', type: 'Station Observation', details: imdRecord.model || 'IMD Station' },
 
     // Surface Pressure
     { rec: openMeteoRecord, variable: 'Surface Pressure', val: openMeteoRecord.surfacePressureHpa, unit: 'hPa', type: 'Current Observation', details: 'Station barometric pressure' },

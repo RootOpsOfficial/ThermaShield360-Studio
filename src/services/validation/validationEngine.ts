@@ -20,18 +20,20 @@ export interface ValidationAuditResult {
 }
 
 // Physical boundaries for earth surface meteorology
+// PRESSURE_MIN lowered to 550 hPa to support high-altitude locations
+// (e.g. Leh ~3500m where station pressure can be ~650 hPa)
 export const PHYSICAL_LIMITS = {
-  TEMP_MIN: -10, // °C
+  TEMP_MIN: -40, // °C (Leh/Ladakh can reach -30°C in winter)
   TEMP_MAX: 60,  // °C (highest recorded on earth is 56.7°C)
   RH_MIN: 0,     // %
   RH_MAX: 100,   // %
   WIND_MIN: 0,   // m/s
   WIND_MAX: 65,  // m/s (Category 5 hurricane threshold ~70 m/s)
-  PRESSURE_MIN: 850,  // hPa (high altitude/deep low)
+  PRESSURE_MIN: 550,  // hPa (high altitude stations like Leh at ~3500m, deep low)
   PRESSURE_MAX: 1085, // hPa (Siberian high)
   SOLAR_MIN: 0,       // W/m²
   SOLAR_MAX: 1400,    // W/m² (solar constant at top of atmosphere ~1361 W/m²)
-  DEW_POINT_MIN: -25, // °C
+  DEW_POINT_MIN: -50, // °C (extreme cold high-altitude dew points)
   DEW_POINT_MAX: 38,  // °C
 };
 

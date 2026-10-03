@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   CitizenPage,
   WardInfo,
@@ -186,6 +186,11 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('Just now');
+
+  // Debounce timer for location changes — prevents rapid sequential API calls
+  const locationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // AbortController to cancel in-flight fetch requests when location changes
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
 
   const formatTemp = useCallback(
     (celsius: number): string => {
@@ -479,8 +484,21 @@ export const CitizenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const setLocationCoords = (lat: number, lng: number) => {
+    // Cancel any pending debounced location change
+    if (locationDebounceRef.current) {
+      clearTimeout(locationDebounceRef.current);
+    }
+    // Abort any in-flight requests from previous location
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+    }
+
     setLocation((prev) => ({ ...prev, lat, lng, isGps: false }));
-    fetchAllData(lat, lng, true, location.ward?.name);
+
+    // Debounce the actual data fetch by 600ms
+    locationDebounceRef.current = setTimeout(() => {
+      fetchAllData(lat, lng, true, location.ward?.name);
+    }, 600);
   };
 
   const refreshData = async () => {

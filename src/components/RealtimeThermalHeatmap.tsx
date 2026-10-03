@@ -171,8 +171,16 @@ export const RealtimeThermalHeatmap: React.FC<RealtimeThermalHeatmapProps> = ({
         `/api/weather/spatial-heatmap?north=${north.toFixed(4)}&south=${south.toFixed(4)}&east=${east.toFixed(4)}&west=${west.toFixed(4)}&zoom=${zoom}`
       );
       if (res.ok) {
+        // Verify Content-Type is JSON before parsing
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          console.warn('Spatial heatmap endpoint returned non-JSON content-type:', contentType);
+          return;
+        }
         const data: SpatialHeatmapData = await res.json();
         setHeatmapData(data);
+      } else {
+        console.warn(`Spatial heatmap endpoint returned HTTP ${res.status}`);
       }
     } catch (err) {
       console.warn('Failed to fetch spatial heatmap:', err);

@@ -143,11 +143,11 @@ export async function checkAllProvidersHealth(
   const hGfs = resolveHealthMeta(noaaGfsRes, 503, 'NCEP operational numerical cycle online');
   const hGefs = resolveHealthMeta(noaaGefsRes, 503, '30-member probabilistic ensemble spread online');
   const hEra5 = resolveHealthMeta(copernicusRes, 503, 'WMO 30-year climatological normal baseline connected');
-  const hImd = resolveHealthMeta(imdRes, 503, 'Official district warning bulletin & Pune observatory synchronized');
+  const hImd = resolveHealthMeta(imdRes, 503, 'Official district warning bulletin & observatory status');
   const hNasaPower = resolveHealthMeta(nasaPowerRes, 503, 'Global Horizontal Irradiance (GHI) and surface fluxes active');
-  const hNcei = resolveHealthMeta(noaaNceiRes, 503, 'Pune Lohegaon Airport GHCN station observation records available');
+  const hNcei = resolveHealthMeta(noaaNceiRes, 503, 'GHCN station observation records available');
   const hFirms = resolveHealthMeta(nasaFirmsRes, 503, 'VIIRS 375m active thermal anomaly scanner online');
-  const hOpenAq = resolveHealthMeta(openaqRes, 503, 'Pune CPCB / SAFAR air quality stations reporting');
+  const hOpenAq = resolveHealthMeta(openaqRes, 503, 'Ambient air quality stations reporting');
   const hGoogle = resolveHealthMeta(googleMapsRes, 200, 'Ward polygon mesh & spatial geocoding active');
 
   const reports: ProviderHealthReport[] = [

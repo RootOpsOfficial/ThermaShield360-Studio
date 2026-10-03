@@ -2,7 +2,7 @@ import { WeatherCurrent, WeatherHourly, WeatherDailyForecast, DataSourceLabel } 
 import { calculateWBGT, calculateUTCI, calculateHeatIndex, categorizeThermalStress } from './thermalEngine.js';
 import { getCachedProvenanceLedger } from '../services/validation/provenanceLedger.js';
 import { fuseMultiSourceRecords } from '../services/fusion/multiSourceFusionEngine.js';
-import { isOpenMeteoInCooldown, setOpenMeteoCooldown } from '../services/data/openMeteoLimiter.js';
+import { isOpenMeteoInCooldown, setOpenMeteoCooldown, clearOpenMeteoCooldown } from '../services/data/openMeteoLimiter.js';
 
 interface CachedWeatherData {
   timestamp: number;

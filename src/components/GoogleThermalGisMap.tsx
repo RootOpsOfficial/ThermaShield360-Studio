@@ -227,6 +227,20 @@ export const GoogleThermalGisMap: React.FC<GoogleThermalGisMapProps> = ({
   const apiKey =
     import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
+  if (!apiKey) {
+    return (
+      <div className={`relative w-full ${heightClass} rounded-2xl overflow-hidden shadow-sm border border-slate-200 bg-slate-100 flex flex-col items-center justify-center p-6 text-center`}>
+        <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center mb-3">
+          <MapPin className="w-6 h-6 text-slate-400" />
+        </div>
+        <h3 className="text-sm font-bold text-slate-800 mb-1">Interactive Map Unavailable</h3>
+        <p className="text-xs text-slate-500 max-w-sm">
+          This feature requires a valid Maps API Key. Please configure <code>VITE_GOOGLE_MAPS_API_KEY</code> in your environment settings before deploying.
+        </p>
+      </div>
+    );
+  }
+
   const mapCenter = useMemo(() => {
     return {
       lat: centerLat ?? location.lat,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ShieldCheck,
   Activity,
@@ -586,7 +587,7 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
   );
 
   if (isModal) {
-    return (
+    const modalContent = (
       <div
         className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto"
         onClick={(e) => {
@@ -615,6 +616,7 @@ export const DataValidationCenter: React.FC<DataValidationCenterProps> = ({
         </div>
       </div>
     );
+    return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
   }
 
   return <div className="max-w-6xl mx-auto p-4 sm:p-6">{content}</div>;
